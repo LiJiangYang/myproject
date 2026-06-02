@@ -4,36 +4,66 @@ import subprocess
 import tempfile
 import json
 import sys
+import time
 import re
+import uuid
+import logging
+from logging.handlers import RotatingFileHandler
+
 import requests
-from flask import Flask, request, Response, stream_with_context, render_template
+from flask import Flask, request, Response, stream_with_context, render_template, make_response
 import pymysql
 from openai import OpenAI
 from bs4 import BeautifulSoup
 import redis
-import uuid
-from flask import request, make_response
-
 
 app = Flask(__name__)
 sys.stdout.reconfigure(line_buffering=True)
 
+# ---------------------------- 日志配置 ----------------------------
+log_dir = 'logs'
+if not os.path.exists(log_dir):
+    os.makedirs(log_dir)
+
+if not app.debug:
+    stream_handler = logging.StreamHandler()
+    stream_handler.setLevel(logging.INFO)
+    file_handler = RotatingFileHandler(
+        os.path.join(log_dir, 'app.log'),
+        maxBytes=10240,
+        backupCount=5
+    )
+    file_handler.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    stream_handler.setFormatter(formatter)
+    file_handler.setFormatter(formatter)
+    app.logger.addHandler(stream_handler)
+    app.logger.addHandler(file_handler)
+    app.logger.setLevel(logging.INFO)
+
 MODEL_DISPLAY_NAME = "江洋大模型（联网搜索版）"
 ANSWER_PREFIX = f"【{MODEL_DISPLAY_NAME}】"
 
-# ---------- 本地 Ollama 配置 ----------
+# ---------------------------- 本地 Ollama ----------------------------
 LOCAL_MODEL_NAME = "qwen2:1.5b-instruct"
 OLLAMA_HOST = os.environ.get('OLLAMA_HOST', 'localhost')
 OLLAMA_API_URL = f"http://{OLLAMA_HOST}:11434/api/generate"
 
-redis_client = redis.Redis(
-    host=os.environ.get('REDIS_HOST', 'localhost'),
-    port=int(os.environ.get('REDIS_PORT', 6379)),
-    decode_responses=True   # 自动解码为字符串
-)
+# ---------------------------- Redis ----------------------------
+redis_client = None
+try:
+    redis_client = redis.Redis(
+        host=os.environ.get('REDIS_HOST', 'localhost'),
+        port=int(os.environ.get('REDIS_PORT', 6379)),
+        decode_responses=True
+    )
+    redis_client.ping()
+    app.logger.info("Redis 连接成功")
+except Exception as e:
+    app.logger.warning(f"Redis 连接失败，将不使用记忆功能: {e}")
 
+# ---------------------------- 本地模型调用 ----------------------------
 def call_local_llm(prompt, system_prompt="", stream=False, max_tokens=512):
-    """调用本地 Ollama 模型，支持流式和非流式。失败时返回 None。"""
     full_prompt = system_prompt + "\n" + prompt if system_prompt else prompt
     payload = {
         "model": LOCAL_MODEL_NAME,
@@ -47,17 +77,17 @@ def call_local_llm(prompt, system_prompt="", stream=False, max_tokens=512):
     try:
         resp = requests.post(OLLAMA_API_URL, json=payload, stream=stream, timeout=30)
         if resp.status_code != 200:
-            print(f"[本地模型] HTTP {resp.status_code}: {resp.text[:200]}")
+            app.logger.error(f"本地模型 HTTP {resp.status_code}: {resp.text[:200]}")
             return None
         if stream:
             return resp.iter_lines()
         else:
             return resp.json().get("response", "")
     except Exception as e:
-        print(f"[本地模型] 请求异常: {e}")
+        app.logger.error(f"本地模型请求异常: {e}")
         return None
 
-# ---------- 工具判断提示词 ----------
+# ---------------------------- 工具判断提示词 ----------------------------
 TOOL_DETECTION_PROMPT = """你是一个工具调用助手。根据用户的问题，判断是否需要使用以下工具：
 - get_current_time: 获取当前系统时间
 - get_all_users: 获取数据库中的用户列表
@@ -73,16 +103,40 @@ TOOL_DETECTION_PROMPT = """你是一个工具调用助手。根据用户的问�
 用户问题：{}
 """
 
-# ---------- 云端模型配置（备选）----------
+# ---------------------------- 云端模型备选 ----------------------------
 MODELS_CONFIG = [
-    {"name": "Qwen3-8B", "model_id": "Qwen/Qwen3-8B", "note": "主力"},
-    {"name": "DeepSeek-R1-Distill-Qwen-7B", "model_id": "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B", "note": "备选"}
+    {"name": "Qwen3-8B", "model_id": "Qwen/Qwen3-8B"},
+    {"name": "DeepSeek-R1-Distill-Qwen-7B", "model_id": "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"}
 ]
 SILICONFLOW_API_KEY = os.environ.get('SILICONFLOW_API_KEY')
 if not SILICONFLOW_API_KEY:
-    print("[警告] 未设置 SILICONFLOW_API_KEY，仅使用本地模型")
+    app.logger.warning("未设置 SILICONFLOW_API_KEY，仅使用本地模型")
 
-# ---------- 数据库配置（直接运行Flask时，MySQL通常在localhost）----------
+def call_cloud_llm(messages, stream=False, tools=None, tool_choice="auto"):
+    if not SILICONFLOW_API_KEY:
+        return None, None
+    for model_conf in MODELS_CONFIG:
+        model_id = model_conf["model_id"]
+        try:
+            app.logger.info(f"云端尝试: {model_id}")
+            client = OpenAI(api_key=SILICONFLOW_API_KEY, base_url="https://api.siliconflow.cn/v1", timeout=20.0)
+            params = {"model": model_id, "messages": messages, "temperature": 0.7}
+            if tools:
+                params["tools"] = tools
+                params["tool_choice"] = tool_choice
+            if stream:
+                params["stream"] = True
+                return client.chat.completions.create(**params), model_id
+            else:
+                resp = client.chat.completions.create(**params)
+                if resp.choices and resp.choices[0].message.content:
+                    return resp, model_id
+        except Exception as e:
+            app.logger.error(f"云端模型 {model_id} 失败: {e}")
+            continue
+    return None, None
+
+# ---------------------------- 数据库 ----------------------------
 DB_CONFIG = {
     'host': os.environ.get('MYSQL_HOST', 'localhost'),
     'user': os.environ.get('MYSQL_USER', 'root'),
@@ -91,11 +145,10 @@ DB_CONFIG = {
     'charset': 'utf8mb4',
     'cursorclass': pymysql.cursors.DictCursor
 }
-
 def get_db_connection():
     return pymysql.connect(**DB_CONFIG)
 
-# ---------- 工具函数 ----------
+# ---------------------------- 工具函数 ----------------------------
 def get_current_time():
     return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -104,36 +157,9 @@ def get_all_users():
     try:
         with conn.cursor() as cursor:
             cursor.execute("SELECT id, username, email FROM users")
-            users = cursor.fetchall()
-        return users
+            return cursor.fetchall()
     finally:
         conn.close()
-
-def web_search(query: str, max_results=3) -> str:
-    print(f"[SEARCH] 收到搜索请求，关键词: {query}", flush=True)
-    try:
-        url = f"https://html.duckduckgo.com/html/?q={query}"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        resp = requests.get(url, headers=headers, timeout=10)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, 'html.parser')
-        results = soup.select('.result')
-        if not results:
-            return "未找到相关结果。"
-        output = []
-        for i, res in enumerate(results[:max_results]):
-            title_elem = res.select_one('.result__title')
-            link_elem = res.select_one('.result__url')
-            snippet_elem = res.select_one('.result__snippet')
-            title = title_elem.get_text(strip=True) if title_elem else "无标题"
-            link = link_elem.get('href') if link_elem else ""
-            snippet = snippet_elem.get_text(strip=True) if snippet_elem else ""
-            output.append(f"{i+1}. {title}\n   {snippet}\n   链接: {link}")
-        return "\n\n".join(output)
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return f"搜索失败: {str(e)}"
 
 def run_python_code(code: str) -> str:
     with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
@@ -150,12 +176,87 @@ def run_python_code(code: str) -> str:
     finally:
         os.unlink(temp_file)
 
+def web_search(query: str, max_results=3) -> str:
+    """博查 API 搜索，带缓存，符合官方文档"""
+    if not hasattr(web_search, 'cache'):
+        web_search.cache = {}
+    now = time.time()
+    cache_key = query
+    if cache_key in web_search.cache:
+        res, exp = web_search.cache[cache_key]
+        if now < exp:
+            app.logger.info(f"[搜索缓存命中] 关键词: {query}")
+            return res
+        else:
+            del web_search.cache[cache_key]
+
+    api_key = os.environ.get('BOCHA_API_KEY')
+    if not api_key:
+        err = "未配置 BOCHA_API_KEY 环境变量"
+        app.logger.error(err)
+        return err
+
+    url = "https://api.bocha.cn/v1/web-search"
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    # 根据文档，使用 summary 和 count 参数
+    payload = {
+        "query": query,
+        "summary": True,
+        "count": max_results
+    }
+    app.logger.info(f"[博查搜索] 请求: {query}, count={max_results}")
+    try:
+        resp = requests.post(url, json=payload, headers=headers, timeout=10)
+        app.logger.info(f"[博查搜索] 响应状态码: {resp.status_code}")
+        if resp.status_code != 200:
+            app.logger.error(f"[博查搜索] HTTP 错误: {resp.status_code}, 响应: {resp.text[:500]}")
+            return f"搜索失败: HTTP {resp.status_code}"
+        data = resp.json()
+        app.logger.info(f"[博查搜索] 响应体预览: {json.dumps(data, ensure_ascii=False)[:500]}")
+        
+        # 检查 code 字段
+        if data.get('code') != 200:
+            err_msg = data.get('msg', '未知错误')
+            app.logger.error(f"[博查搜索] API 返回错误: {err_msg}")
+            return f"搜索失败: {err_msg}"
+        
+        # 官方结构: data.data.webPages.value
+        web_pages = data.get('data', {}).get('webPages', {})
+        results = web_pages.get('value', [])
+        
+        if not results:
+            result_str = "未找到相关结果。"
+        else:
+            output = []
+            for i, item in enumerate(results[:max_results], 1):
+                title = item.get('name', '无标题')
+                # snippet 和 summary 二选一
+                snippet = item.get('snippet') or item.get('summary', '')
+                output.append(f"{i}. {title}\n   {snippet}")
+            result_str = "\n\n".join(output)
+        
+        # 缓存
+        web_search.cache[cache_key] = (result_str, now + 600)
+        if len(web_search.cache) > 20:
+            oldest = min(web_search.cache.items(), key=lambda x: x[1][1])[0]
+            del web_search.cache[oldest]
+        app.logger.info(f"[博查搜索] 成功返回 {len(results)} 条结果")
+        return result_str
+    except requests.exceptions.Timeout:
+        app.logger.error("[博查搜索] 请求超时")
+        return "搜索超时，请稍后再试。"
+    except requests.exceptions.RequestException as e:
+        app.logger.error(f"[博查搜索] 网络异常: {e}")
+        return f"搜索请求失败: {str(e)}"
+    except Exception as e:
+        app.logger.error(f"[博查搜索] 未知异常: {e}", exc_info=True)
+        return f"搜索失败: {str(e)}"
+    
 def read_file(filepath: str) -> str:
-    """读取文件内容（安全限制在当前目录）"""
     base = os.path.abspath('.')
     full = os.path.abspath(os.path.join(base, filepath))
     if not full.startswith(base):
-        return "错误：不允许访问上级目录。"
+        return "不允许访问上级目录"
     try:
         with open(full, 'r', encoding='utf-8') as f:
             return f.read()[:2000]
@@ -163,46 +264,38 @@ def read_file(filepath: str) -> str:
         return f"读取失败: {e}"
 
 def write_file(filepath: str, content: str) -> str:
-    """写入内容到文件（覆盖模式）"""
     base = os.path.abspath('.')
     full = os.path.abspath(os.path.join(base, filepath))
     if not full.startswith(base):
-        return "错误：不允许写入上级目录。"
+        return "不允许写入上级目录"
     try:
         os.makedirs(os.path.dirname(full), exist_ok=True)
         with open(full, 'w', encoding='utf-8') as f:
             f.write(content)
-        return f"成功写入 {len(content)} 字符到 {filepath}"
+        return f"成功写入 {len(content)} 字符"
     except Exception as e:
         return f"写入失败: {e}"
 
-# 在第 120 行左右（write_file 函数后面）添加：
 def get_weather(city: str) -> str:
-    """使用高德地图 API 获取实时天气"""
     api_key = os.environ.get('AMAP_API_KEY')
     if not api_key:
-        return "未配置高德天气 API Key，请在环境变量中设置 AMAP_API_KEY"
+        return "未配置高德天气 API Key"
     try:
-        # 1. 先根据城市名获取城市编码（adcode）
         geocode_url = f"https://restapi.amap.com/v3/geocode/geo?address={city}&output=json&key={api_key}"
         geo_resp = requests.get(geocode_url, timeout=5)
         geo_data = geo_resp.json()
         if geo_data['status'] != '1' or not geo_data['geocodes']:
-            return f"未找到城市 '{city}'"
+            return f"未找到城市 {city}"
         adcode = geo_data['geocodes'][0]['adcode']
-        # 2. 根据城市编码获取天气
         weather_url = f"https://restapi.amap.com/v3/weather/weatherInfo?city={adcode}&output=json&key={api_key}"
         weather_resp = requests.get(weather_url, timeout=5)
         weather_data = weather_resp.json()
         if weather_data['status'] != '1' or not weather_data['lives']:
-            return f"无法获取 '{city}' 的天气"
+            return f"无法获取 {city} 天气"
         live = weather_data['lives'][0]
-        return (f"{live['city']}：{live['weather']}，"
-                f"温度 {live['temperature']}℃，"
-                f"湿度 {live['humidity']}%，"
-                f"风向 {live['winddirection']}，风力 {live['windpower']} 级")
+        return f"{live['city']}：{live['weather']}，温度 {live['temperature']}℃，湿度 {live['humidity']}%，风向 {live['winddirection']}，风力 {live['windpower']} 级"
     except Exception as e:
-        return f"天气查询失败: {str(e)}"
+        return f"天气查询失败: {e}"
 
 TOOLS_LIST = {
     "get_current_time": get_current_time,
@@ -211,10 +304,9 @@ TOOLS_LIST = {
     "web_search": web_search,
     "read_file": read_file,
     "write_file": write_file,
-    "get_weather": get_weather   # 添加这一行
+    "get_weather": get_weather
 }
 
-# 关键词兜底映射（当模型判断失败时使用）
 TOOL_KEYWORDS_MAP = {
     'get_current_time': ['现在几点', '当前时间', '几点了', '什么时间', '几时'],
     'get_all_users': ['列出用户', '所有用户', '用户列表', '有哪些用户', '显示用户'],
@@ -231,55 +323,24 @@ SYSTEM_PROMPT = """你是江洋大模型。回答时请始终以“我”的第�
 def json_response(data, status=200):
     return Response(json.dumps(data, ensure_ascii=False, indent=2), status=status, mimetype='application/json')
 
-# ---------- 云端模型链（备选）----------
-def call_cloud_llm(messages, stream=False, tools=None, tool_choice="auto"):
-    if not SILICONFLOW_API_KEY:
-        return None, None
-    for model_conf in MODELS_CONFIG:
-        model_id = model_conf["model_id"]
-        try:
-            print(f"[云端] 尝试调用: {model_id}")
-            client = OpenAI(api_key=SILICONFLOW_API_KEY, base_url="https://api.siliconflow.cn/v1", timeout=20.0)
-            params = {"model": model_id, "messages": messages, "temperature": 0.7}
-            if tools:
-                params["tools"] = tools
-                params["tool_choice"] = tool_choice
-            if stream:
-                params["stream"] = True
-                return client.chat.completions.create(**params), model_id
-            else:
-                resp = client.chat.completions.create(**params)
-                if resp.choices and resp.choices[0].message.content:
-                    return resp, model_id
-        except Exception as e:
-            print(f"[云端] {model_id} 失败: {e}")
-            continue
-    return None, None
-
 def generate_code_for_query(query: str) -> str:
-    """让本地模型生成解决用户问题的 Python 代码"""
     code_prompt = f"请生成 Python 代码来解决以下问题，只输出代码，不要添加解释：{query}"
     code = call_local_llm(code_prompt, system_prompt="", stream=False, max_tokens=256)
     if code and "print" not in code and "=" not in code:
-        # 如果返回的是纯数字，包装成 print
         if code.strip().isdigit():
             code = f"print({code})"
     return code
 
 def extract_search_query(user_query: str) -> str:
-    """从用户问题中提取搜索关键词"""
-    # 简单正则：匹配“搜索xxx”或“查找xxx”
     match = re.search(r'搜索[\s：:]*([^。]+)', user_query)
     if match:
         return match.group(1).strip()
     match = re.search(r'查找[\s：:]*([^。]+)', user_query)
     if match:
         return match.group(1).strip()
-    # 如果用户直接问“xx是什么”，也可以当作搜索词
     return user_query.strip()
 
 def extract_filepath(user_query: str) -> str:
-    """从用户问题中提取文件路径"""
     match = re.search(r'读取文件[\s]*([^\s]+)', user_query)
     if match:
         return match.group(1)
@@ -289,47 +350,47 @@ def extract_filepath(user_query: str) -> str:
     return None
 
 def extract_write_content(user_query: str):
-    """提取写入文件的路径和内容，格式：写入文件 path 内容为 content"""
     match = re.search(r'写入文件[\s]*([^\s]+)[\s]*内容为[\s]*(.+)', user_query)
     if match:
         return match.group(1), match.group(2)
-    # 另一种格式：保存到文件 path ： content
     match = re.search(r'保存到文件[\s]*([^\s]+)[\s]*:[\s]*(.+)', user_query)
     if match:
         return match.group(1), match.group(2)
     return None, None
 
-# ---------- 主聊天路由 ----------
+# ---------------------------- 主路由 ----------------------------
 @app.route('/chat-stream', methods=['GET'])
 def chat_stream():
     user_query = request.args.get('q', '')
     if not user_query:
         return json_response({'error': '请提供参数 q'}, 400)
 
-    # 获取或生成 session_id（用于区分用户）
     session_id = request.cookies.get('session_id')
     if not session_id:
         session_id = str(uuid.uuid4())
 
+    app.logger.info(f"[请求] session={session_id[:8]}, query={user_query}")
+
     def generate():
         yield ANSWER_PREFIX + "\n"
 
-        # 从 Redis 加载历史对话（最多最近 20 条消息）
+        # 加载历史
         history_key = f"chat_history:{session_id}"
-        history_raw = redis_client.lrange(history_key, -20, -1) if redis_client else []
         history_messages = []
-        for item in history_raw:
+        if redis_client:
             try:
-                history_messages.append(json.loads(item))
-            except:
-                pass
+                raw = redis_client.lrange(history_key, -20, -1)
+                for item in raw:
+                    history_messages.append(json.loads(item))
+                app.logger.debug(f"加载 {len(history_messages)} 条历史消息")
+            except Exception as e:
+                app.logger.error(f"Redis 读取失败: {e}")
 
-        # 构建消息列表：系统提示 + 历史 + 当前用户问题
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         messages.extend(history_messages)
         messages.append({"role": "user", "content": user_query})
 
-        # ---------- 第一阶段：智能工具判断（本地模型）----------
+        # ---------- 工具判断 ----------
         tool_name = None
         try:
             detection_prompt = TOOL_DETECTION_PROMPT.format(user_query)
@@ -338,117 +399,138 @@ def chat_stream():
                 candidate = detection_response.strip()
                 if candidate in TOOLS_LIST:
                     tool_name = candidate
-                    print(f"[工具判断] 模型决定调用工具: {tool_name}")
+                    app.logger.info(f"[工具判断] 模型决定调用: {tool_name}")
+                else:
+                    app.logger.warning(f"[工具判断] 模型返回未知工具: {candidate}")
         except Exception as e:
-            print(f"[工具判断] 模型调用失败: {e}")
+            app.logger.error(f"[工具判断] 模型调用失败: {e}")
 
-        # ---------- 第二阶段：关键词兜底 ----------
         if not tool_name:
             for tool, keywords in TOOL_KEYWORDS_MAP.items():
                 if any(kw in user_query for kw in keywords):
                     tool_name = tool
-                    print(f"[工具判断] 关键词触发工具: {tool_name}")
+                    app.logger.info(f"[工具判断] 关键词触发: {tool_name}")
                     break
 
-        # ---------- 第三阶段：执行工具 ----------
+        # ---------- 执行工具 ----------
         tool_result = None
         if tool_name and tool_name in TOOLS_LIST:
+            app.logger.info(f"[工具执行] 开始调用 {tool_name}")
             try:
                 if tool_name == "run_python_code":
                     code = generate_code_for_query(user_query)
                     if code:
-                        print(f"[代码生成] {code}")
+                        app.logger.debug(f"[代码生成] 代码: {code[:200]}")
                         tool_result = run_python_code(code)
                     else:
-                        tool_result = "无法生成有效的 Python 代码。"
+                        tool_result = "无法生成有效的 Python 代码"
                 elif tool_name == "web_search":
                     query = extract_search_query(user_query)
+                    app.logger.info(f"[搜索] 关键词: {query}")
                     tool_result = web_search(query)
                 elif tool_name == "read_file":
-                    filepath = extract_filepath(user_query)
-                    if filepath:
-                        tool_result = read_file(filepath)
+                    fp = extract_filepath(user_query)
+                    if fp:
+                        tool_result = read_file(fp)
                     else:
-                        tool_result = "请指定要读取的文件名，例如：读取文件 test.txt"
+                        tool_result = "请指定要读取的文件名"
                 elif tool_name == "write_file":
                     path, content = extract_write_content(user_query)
                     if path and content:
                         tool_result = write_file(path, content)
                     else:
-                        tool_result = "请使用格式：写入文件 文件名 内容为 ... 或 保存到文件 path : content"
+                        tool_result = "请使用格式：写入文件 文件名 内容为 ..."
                 elif tool_name == "get_weather":
-                    # 提取城市名（简单实现：取“天气”后面的词）
-                    import re
                     match = re.search(r'([^天气]+)天气', user_query)
                     city = match.group(1).strip() if match else "北京"
-                    tool_result = get_weather(city) 
-                
+                    app.logger.info(f"[天气] 查询城市: {city}")
+                    tool_result = get_weather(city)
                 else:
                     tool_result = TOOLS_LIST[tool_name]()
-                # 将工具结果作为用户消息追加，便于模型参考
                 messages.append({"role": "user", "content": f"工具 '{tool_name}' 执行结果：{tool_result}"})
-                yield f"[工具结果] {tool_result}\n"
+                app.logger.info(f"[工具执行] {tool_name} 完成，结果长度: {len(str(tool_result))}")
             except Exception as e:
                 error_msg = f"工具执行失败: {str(e)}"
                 messages.append({"role": "user", "content": error_msg})
-                yield f"[工具错误] {error_msg}\n"
+                app.logger.error(f"[工具执行] {tool_name} 异常: {e}", exc_info=True)
 
-        # ---------- 第四阶段：生成最终回答 ----------
-        # 构造对话文本（因为本地 Ollama 不支持 messages 格式，需拼成自然文本）
-        conversation_text = ""
+        # ---------- 知识性问题路由 ----------
+        knowledge_keywords = ['是什么', '什么是', '谁', '为什么', '介绍', '定义', '解释', '历史', '原理', '区别', '知道', '了解', '能否介绍', '说说']
+        is_knowledge = any(kw in user_query for kw in knowledge_keywords)
+        if is_knowledge and '1.5b' in LOCAL_MODEL_NAME and not tool_name:
+            app.logger.info("[路由] 知识性问题，使用云端模型")
+            cloud_resp, used = call_cloud_llm(messages, stream=True)
+            if cloud_resp:
+                full = []
+                for chunk in cloud_resp:
+                    if chunk.choices[0].delta.content:
+                        token = chunk.choices[0].delta.content
+                        full.append(token)
+                        yield token
+                if redis_client:
+                    redis_client.rpush(history_key, json.dumps({"role": "user", "content": user_query}))
+                    redis_client.rpush(history_key, json.dumps({"role": "assistant", "content": "".join(full)}))
+                    redis_client.expire(history_key, 604800)
+                app.logger.info(f"[完成] 云端模型回答长度: {len(''.join(full))}")
+                return
+
+        # ---------- 工具后优先云端 ----------
+        if tool_name:
+            app.logger.info("[路由] 工具已使用，调用云端模型生成最终回答")
+            cloud_resp, used = call_cloud_llm(messages, stream=True)
+            if cloud_resp:
+                full = []
+                for chunk in cloud_resp:
+                    if chunk.choices[0].delta.content:
+                        token = chunk.choices[0].delta.content
+                        full.append(token)
+                        yield token
+                if redis_client:
+                    redis_client.rpush(history_key, json.dumps({"role": "user", "content": user_query}))
+                    redis_client.rpush(history_key, json.dumps({"role": "assistant", "content": "".join(full)}))
+                    redis_client.expire(history_key, 604800)
+                app.logger.info(f"[完成] 云端模型回答长度: {len(''.join(full))}")
+                return
+
+        # ---------- 本地模型 ----------
+        app.logger.info("[路由] 使用本地模型生成回答")
+        conv_text = ""
         for msg in messages:
             if msg["role"] == "system":
-                conversation_text += f"系统：{msg['content']}\n"
+                conv_text += f"系统：{msg['content']}\n"
             elif msg["role"] == "user":
-                conversation_text += f"用户：{msg['content']}\n"
-        conversation_text += "助手："
-
-        final_stream = call_local_llm(conversation_text, system_prompt="", stream=True, max_tokens=1024)
-        full_answer = []
-        if final_stream:
-            for line in final_stream:
+                conv_text += f"用户：{msg['content']}\n"
+        conv_text += "助手："
+        stream_gen = call_local_llm(conv_text, system_prompt="", stream=True, max_tokens=1024)
+        if stream_gen:
+            full = []
+            for line in stream_gen:
                 if line:
                     try:
                         data = json.loads(line.decode('utf-8'))
                         token = data.get("response", "")
                         if token:
-                            full_answer.append(token)
+                            full.append(token)
                             yield token
                     except:
                         pass
-            # 将本次对话存储到 Redis
-            assistant_message = {"role": "assistant", "content": "".join(full_answer)}
-            user_message = {"role": "user", "content": user_query}
             if redis_client:
-                redis_client.rpush(history_key, json.dumps(user_message))
-                redis_client.rpush(history_key, json.dumps(assistant_message))
-                redis_client.expire(history_key, 604800)  # 7天过期
+                redis_client.rpush(history_key, json.dumps({"role": "user", "content": user_query}))
+                redis_client.rpush(history_key, json.dumps({"role": "assistant", "content": "".join(full)}))
+                redis_client.expire(history_key, 604800)
+            app.logger.info(f"[完成] 本地模型回答长度: {len(''.join(full))}")
             return
 
-        # 本地模型失败，尝试云端
-        cloud_resp, used_model = call_cloud_llm(messages, stream=True)
-        if cloud_resp:
-            for chunk in cloud_resp:
-                if chunk.choices[0].delta.content:
-                    token = chunk.choices[0].delta.content
-                    full_answer.append(token)
-                    yield token
-            # 存储到 Redis
-            assistant_message = {"role": "assistant", "content": "".join(full_answer)}
-            user_message = {"role": "user", "content": user_query}
-            if redis_client:
-                redis_client.rpush(history_key, json.dumps(user_message))
-                redis_client.rpush(history_key, json.dumps(assistant_message))
-                redis_client.expire(history_key, 604800)
-            print(f"[完成] 使用云端模型: {used_model}")
-        else:
-            yield "\n[错误] 所有模型均不可用，请检查 Ollama 服务或云端配置。"
+        # 最终降级
+        err_msg = "\n[错误] 无法生成回答，请稍后重试。"
+        yield err_msg
+        app.logger.error("所有模型均不可用")
 
     response = Response(stream_with_context(generate()), mimetype='text/plain; charset=utf-8')
     response.set_cookie('session_id', session_id, max_age=604800, httponly=True)
     return response
 
-# ---------- 辅助路由 ----------
+# ---------------------------- 辅助路由 ----------------------------
 @app.route('/')
 def hello():
     return f'<h1>{MODEL_DISPLAY_NAME}</h1><p><a href="/chat-ui">进入对话</a></p>'

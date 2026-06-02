@@ -5,3 +5,4 @@ RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua
 COPY . .
 EXPOSE 5000
 CMD ["python3", "app.py"]
+RUN mkdir -p /app/logs

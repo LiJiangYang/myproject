@@ -62,6 +62,10 @@ services:
       REDIS_PORT: 6379
       SILICONFLOW_API_KEY: sk-zceeebxdvloouldccrcnzjfcuyxloobhfrnhbrauameiktno
       AMAP_API_KEY: 	2858fb43ae992a37dec16c67f5936712
+      BOCHA_API_KEY: sk-179264478ac54991acc175d6858abc95
+    dns:
+    - 8.8.8.8
+    - 114.114.114.114
 
     depends_on:
       mysql:
