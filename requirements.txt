@@ -1,0 +1,6 @@
+flask
+pymysql
+requests
+openai
+beautifulsoup4
+lxml

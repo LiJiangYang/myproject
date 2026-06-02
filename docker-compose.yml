@@ -1,0 +1,59 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: my-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_DATABASE: myapp
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: my-ollama
+    ports:
+      - "11434:11434"                # 可选，方便宿主机调试
+    volumes:
+      - ollama-data:/root/.ollama    # 持久化模型，避免每次拉取
+    environment:
+      - OLLAMA_HOST=0.0.0.0          # 让 Ollama 监听所有接口
+    # 如果你想用 GPU（你的4G显卡需要安装 nvidia-container-toolkit），取消下面注释
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    command: serve
+
+  flask:
+    build: .
+    container_name: my-flask
+    ports:
+      - "5001:5001"
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_USER: root
+      MYSQL_PASSWORD: 123456
+      MYSQL_DATABASE: myapp
+      OLLAMA_HOST: host.docker.internal             # 关键：使用服务名
+      SILICONFLOW_API_KEY: sk-zceeebxdvloouldccrcnzjfcuyxloobhfrnhbrauameiktno
+    depends_on:
+      mysql:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    volumes:
+      - .:/app
+
+volumes:
+  mysql-data:
+  ollama-data:
