@@ -34,6 +34,19 @@ services:
     #           capabilities: [gpu]
     command: serve
 
+  redis:
+    image: redis:7-alpine
+    container_name: my-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   flask:
     build: .
     container_name: my-flask
@@ -44,12 +57,18 @@ services:
       MYSQL_USER: root
       MYSQL_PASSWORD: 123456
       MYSQL_DATABASE: myapp
-      OLLAMA_HOST: host.docker.internal             # 关键：使用服务名
+      OLLAMA_HOST: ollama          # 使用服务名，而非 host.docker.internal
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       SILICONFLOW_API_KEY: sk-zceeebxdvloouldccrcnzjfcuyxloobhfrnhbrauameiktno
+      AMAP_API_KEY: 	2858fb43ae992a37dec16c67f5936712
+
     depends_on:
       mysql:
         condition: service_healthy
       ollama:
+        condition: service_started
+      redis:
         condition: service_started
     volumes:
       - .:/app
@@ -57,3 +76,4 @@ services:
 volumes:
   mysql-data:
   ollama-data:
+  redis-data:
