@@ -16,38 +16,38 @@
         * { box-sizing: border-box; }
         body { margin: 0; display: flex; height: 100vh; font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); }
 
-        /* 侧边栏 */
         .sidebar { width: 260px; background: var(--sidebar-bg); border-right: 1px solid var(--border); padding: 20px; display: flex; flex-direction: column; flex-shrink: 0; }
-        .logo { font-size: 18px; font-weight: bold; margin-bottom: 30px; display: flex; align-items: center; gap: 10px; color: var(--primary); }
-        .history-item { padding: 10px; cursor: pointer; border-radius: 8px; transition: 0.2s; color: #64748b; font-size: 14px; }
+        .logo { font-size: 18px; font-weight: bold; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; color: var(--primary); cursor: pointer; }
+        .new-chat-btn { background: var(--primary); color: white; border: none; border-radius: 24px; padding: 10px 12px; margin-bottom: 20px; cursor: pointer; font-size: 14px; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s; width: 100%; }
+        .new-chat-btn:hover { background: #3a5fcc; transform: translateY(-1px); box-shadow: 0 2px 8px rgba(79,124,255,0.3); }
+        .delete-all-btn { background: #f1f5f9; color: #dc2626; border: 1px solid #e2e8f0; border-radius: 24px; padding: 8px 12px; margin-top: 20px; cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 6px; transition: 0.2s; width: 100%; }
+        .delete-all-btn:hover { background: #fee2e2; border-color: #dc2626; }
+        .history-list { flex: 1; overflow-y: auto; margin-bottom: 16px; }
+        .history-item { padding: 10px; cursor: pointer; border-radius: 8px; transition: 0.2s; color: #64748b; font-size: 14px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
         .history-item:hover { background: #f1f5f9; color: var(--text); }
+        .history-item.active { background: #eef2ff; color: var(--primary); font-weight: 500; }
+        .delete-chat-btn { display: none; background: none; border: none; color: #dc2626; font-size: 14px; cursor: pointer; padding: 2px 6px; border-radius: 12px; }
+        .history-item:hover .delete-chat-btn { display: inline-block; }
+        .delete-chat-btn:hover { background: #fee2e2; }
 
-        /* 主体 */
         .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
         #messages { flex: 1; overflow-y: auto; padding: 40px 20px; display: flex; flex-direction: column; gap: 24px; scroll-behavior: smooth; }
-        
-        /* 消息 */
         .msg { display: flex; gap: 16px; max-width: 800px; margin: 0 auto; width: 100%; animation: fadeIn 0.3s ease; }
         .avatar { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; font-size: 16px; flex-shrink: 0; }
         .ai .avatar { background: var(--primary); color: white; }
         .user .avatar { background: #e2e8f0; color: #475569; }
         .content { line-height: 1.7; padding: 6px 0; font-size: 15px; width: 100%; overflow-x: hidden; }
-        
-        /* 思考动画 */
         .thinking-box { display: flex; align-items: center; gap: 10px; color: var(--primary); font-size: 14px; font-weight: 500; }
         .pulse { display: flex; gap: 4px; }
         .pulse span { width: 6px; height: 6px; background: var(--primary); border-radius: 50%; animation: bounce 1.4s infinite ease-in-out both; }
         .pulse span:nth-child(1) { animation-delay: -0.32s; }
         .pulse span:nth-child(2) { animation-delay: -0.16s; }
         @keyframes bounce { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
-
-        /* 输入区 */
         .composer-wrap { padding: 20px; background: transparent; }
         .composer { max-width: 800px; margin: auto; background: white; border: 1px solid var(--border); padding: 12px 20px; border-radius: 24px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
         textarea { flex: 1; border: none; background: transparent; outline: none; resize: none; font-size: 15px; height: 24px; max-height: 100px; padding: 0; color: var(--text); }
         button { background: var(--primary); color: white; border: none; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; display: grid; place-items: center; transition: 0.2s; }
         button:hover { opacity: 0.9; transform: scale(1.05); }
-
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
@@ -55,7 +55,9 @@
 
 <div class="sidebar">
     <div class="logo">✦ 江洋大模型</div>
-    <div class="history-item">✚ 新建对话</div>
+    <button class="new-chat-btn" id="newChatBtn">➕ 新建对话</button>
+    <div class="history-list" id="historyList"></div>
+    <button class="delete-all-btn" id="deleteAllBtn">🗑️ 清空所有对话</button>
 </div>
 
 <div class="main">
@@ -74,70 +76,272 @@
 </div>
 
 <script>
-const messages = document.getElementById('messages');
-const input = document.getElementById('input');
-const send = document.getElementById('send');
+// ---------- 全局变量 ----------
+let currentChatId = null;
+let userChats = [];
+let autoScroll = true;
+let scrollTimeout = null;
 
-function appendMsg(role) {
+// ---------- 辅助函数 ----------
+function getUserId() {
+    let userId = localStorage.getItem('user_id');
+    if (!userId) {
+        userId = crypto.randomUUID ? crypto.randomUUID() : 'user_' + Date.now() + '_' + Math.random();
+        localStorage.setItem('user_id', userId);
+    }
+    return userId;
+}
+
+async function fetchAPI(url, options = {}) {
+    const res = await fetch(url, options);
+    return res.json();
+}
+
+// 渲染侧边栏对话列表，并为每个对话添加删除按钮
+function renderChatList() {
+    const container = document.getElementById('historyList');
+    if (!container) return;
+    container.innerHTML = '';
+    userChats.forEach(chat => {
+        const div = document.createElement('div');
+        div.className = 'history-item' + (currentChatId === chat.id ? ' active' : '');
+        const titleSpan = document.createElement('span');
+        titleSpan.textContent = chat.title || '新对话';
+        titleSpan.style.flex = '1';
+        titleSpan.style.overflow = 'hidden';
+        titleSpan.style.textOverflow = 'ellipsis';
+        titleSpan.style.whiteSpace = 'nowrap';
+        const delBtn = document.createElement('button');
+        delBtn.textContent = '✕';
+        delBtn.className = 'delete-chat-btn';
+        delBtn.title = '删除对话';
+        delBtn.onclick = (e) => {
+            e.stopPropagation();
+            deleteChat(chat.id);
+        };
+        div.appendChild(titleSpan);
+        div.appendChild(delBtn);
+        div.onclick = () => switchChat(chat.id);
+        container.appendChild(div);
+    });
+}
+
+// 加载某个对话的消息
+async function loadChatMessages(chatId) {
+    const msgs = await fetchAPI(`/api/chat-messages?chat_id=${chatId}`);
+    const messagesDiv = document.getElementById('messages');
+    messagesDiv.innerHTML = '';
+    const welcome = document.getElementById('welcome-screen');
+    if (welcome) welcome.remove();
+    msgs.forEach(msg => {
+        const role = msg.role === 'user' ? 'user' : 'ai';
+        const contentDiv = appendMsgStatic(role);
+        if (msg.role === 'assistant') {
+            contentDiv.innerHTML = marked.parse(msg.content);
+        } else {
+            contentDiv.innerText = msg.content;
+        }
+    });
+    if (msgs.length === 0) {
+        messagesDiv.innerHTML = '<div id="welcome-screen" style="text-align:center; padding-top:100px; color:#94a3b8;"><h1>江洋大模型</h1><p>有什么我可以帮你的吗？</p></div>';
+    }
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
+
+function appendMsgStatic(role) {
+    const messagesDiv = document.getElementById('messages');
     const div = document.createElement('div');
     div.className = `msg ${role}`;
-    div.innerHTML = `<div class="avatar">${role==='ai'?'AI':'我'}</div><div class="content"></div>`;
-    messages.appendChild(div);
+    div.innerHTML = `<div class="avatar">${role === 'ai' ? 'AI' : '我'}</div><div class="content"></div>`;
+    messagesDiv.appendChild(div);
     return div.querySelector('.content');
 }
 
-async function ask() {
-    const q = input.value.trim();
-    if(!q) return;
-    
-    // 移除欢迎界面（安全移除）
-    const welcome = document.getElementById('welcome-screen');
-    if(welcome) welcome.remove();
+// 切换对话
+async function switchChat(chatId) {
+    if (currentChatId === chatId) return;
+    currentChatId = chatId;
+    renderChatList();
+    await loadChatMessages(chatId);
+    autoScroll = true;
+}
 
-    appendMsg('user').innerText = q;
-    input.value = '';
-    
-    const aiContent = appendMsg('ai');
-    aiContent.innerHTML = `
-        <div class="thinking-box">
-            <div class="pulse"><span></span><span></span><span></span></div>
-            <span id="status">思考中...</span>
-        </div>`;
-    
-    const statusText = document.getElementById('status');
-    let fullText = '';
-    
-    try {
-        const res = await fetch('/chat-stream?q=' + encodeURIComponent(q));
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        
-        while(true) {
-            const {done, value} = await reader.read();
-            if(done) break;
-            
-            const chunk = decoder.decode(value, {stream: true});
-            
-            // 状态更新
-            if(chunk.includes('🔧')) statusText.innerText = '正在调用工具...';
-            if(chunk.includes('✅')) statusText.innerText = '正在整理结果...';
-            
-            const cleanChunk = chunk.replace(/【江洋大模型】|🤔 思考中...|🔧 正在调用.*?|✅ 工具完成.*?/g, '');
-            
-            if(cleanChunk.trim()) {
-                fullText += cleanChunk;
-                aiContent.innerHTML = marked.parse(fullText);
-            }
-            // 始终保持滚动到底部
-            messages.scrollTop = messages.scrollHeight;
-        }
-    } catch(e) {
-        aiContent.innerHTML = "请求失败，请检查后端服务。";
+// 删除单个对话
+async function deleteChat(chatId) {
+    if (!confirm('确定要删除这个对话吗？')) return;
+    await fetchAPI(`/api/chat/${chatId}`, { method: 'DELETE' });
+    if (currentChatId === chatId) {
+        currentChatId = null;
+    }
+    await loadChatList();
+}
+
+// 清空所有对话
+async function deleteAllChats() {
+    if (!confirm('确定要删除所有对话吗？此操作不可撤销！')) return;
+    await fetchAPI('/api/chats', { method: 'DELETE' });
+    currentChatId = null;
+    await loadChatList();
+}
+
+// 新建对话
+async function newChat() {
+    const data = await fetchAPI('/api/new-chat', { method: 'POST' });
+    if (data.chat_id) {
+        await loadChatList();
+        await switchChat(data.chat_id);
     }
 }
 
-send.onclick = ask;
-input.onkeydown = e => { if(e.key==='Enter' && !e.shiftKey) { e.preventDefault(); ask(); } };
+// 加载用户所有对话列表
+async function loadChatList() {
+    const chats = await fetchAPI('/api/chats');
+    userChats = chats;
+    renderChatList();
+    if (!currentChatId && userChats.length > 0) {
+        await switchChat(userChats[0].id);
+    } else if (userChats.length === 0 && !currentChatId) {
+        // 没有对话，显示欢迎屏幕，但不自动新建（让用户点击新建按钮）
+        const messagesDiv = document.getElementById('messages');
+        messagesDiv.innerHTML = '<div id="welcome-screen" style="text-align:center; padding-top:100px; color:#94a3b8;"><h1>江洋大模型</h1><p>有什么我可以帮你的吗？</p></div>';
+    } else if (currentChatId && !userChats.find(c => c.id === currentChatId)) {
+        if (userChats.length) await switchChat(userChats[0].id);
+        else currentChatId = null;
+    }
+}
+
+// ---------- 滚动控制 ----------
+function handleScroll() {
+    const msgsDiv = document.getElementById('messages');
+    if (!msgsDiv) return;
+    const isAtBottom = msgsDiv.scrollHeight - msgsDiv.scrollTop - msgsDiv.clientHeight < 20;
+    autoScroll = isAtBottom;
+    if (scrollTimeout) clearTimeout(scrollTimeout);
+    scrollTimeout = setTimeout(() => {}, 100);
+}
+
+function scrollToBottomIfNeeded() {
+    if (!autoScroll) return;
+    const msgsDiv = document.getElementById('messages');
+    if (msgsDiv) msgsDiv.scrollTop = msgsDiv.scrollHeight;
+}
+
+// ---------- 发送消息 ----------
+async function sendMessage() {
+    const input = document.getElementById('input');
+    const q = input.value.trim();
+    if (!q) return;
+
+    if (!currentChatId) {
+        // 如果没有当前对话，先新建一个
+        await newChat();
+        if (!currentChatId) return;
+    }
+
+    const welcome = document.getElementById('welcome-screen');
+    if (welcome) welcome.remove();
+
+    // 添加用户消息
+    const userDiv = appendMsgStatic('user');
+    userDiv.innerText = q;
+    input.value = '';
+    scrollToBottomIfNeeded();
+
+    // AI 占位，显示思考动画
+    const aiContent = appendMsgStatic('ai');
+    const thinkingId = 'thinking-' + Date.now();
+    aiContent.innerHTML = `
+        <div class="thinking-box" id="${thinkingId}">
+            <div class="pulse"><span></span><span></span><span></span></div>
+            <span>思考中...</span>
+        </div>`;
+    scrollToBottomIfNeeded();
+
+    let fullText = '';
+    let firstContentReceived = false;
+
+    try {
+        const url = `/chat-stream?q=${encodeURIComponent(q)}&chat_id=${currentChatId}`;
+        const res = await fetch(url);
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+
+            // 处理状态提示（工具调用等），更新思考框中的文字，但不结束动画
+            if (!firstContentReceived && (chunk.includes('🔧') || chunk.includes('✅'))) {
+                const box = document.getElementById(thinkingId);
+                if (box) {
+                    const textSpan = box.querySelector('span');
+                    if (textSpan) {
+                        if (chunk.includes('🔧')) textSpan.innerText = '正在调用工具...';
+                        if (chunk.includes('✅')) textSpan.innerText = '正在整理结果...';
+                    }
+                }
+                continue;
+            }
+
+            // 过滤掉可能残留的前缀（但后端已不再输出）
+            const clean = chunk.replace(/【江洋大模型（联网搜索版）】/g, '');
+            if (clean.trim()) {
+                if (!firstContentReceived) {
+                    firstContentReceived = true;
+                    const box = document.getElementById(thinkingId);
+                    if (box) {
+                        box.innerHTML = '<span style="color: #4f7cff;">思考结束</span>';
+                        await new Promise(resolve => setTimeout(resolve, 300));
+                    }
+                    aiContent.innerHTML = '';
+                }
+                fullText += clean;
+                aiContent.innerHTML = marked.parse(fullText);
+                scrollToBottomIfNeeded();
+            }
+        }
+        if (!firstContentReceived) {
+            const box = document.getElementById(thinkingId);
+            if (box) box.innerHTML = '<span>思考结束</span>';
+            await new Promise(resolve => setTimeout(resolve, 300));
+            aiContent.innerHTML = '';
+        }
+        await loadChatList(); // 更新对话标题
+    } catch (e) {
+        if (!firstContentReceived) {
+            const box = document.getElementById(thinkingId);
+            if (box) box.innerHTML = '<span>思考出错</span>';
+            await new Promise(resolve => setTimeout(resolve, 500));
+            aiContent.innerHTML = '请求失败，请检查后端服务。';
+        } else {
+            aiContent.innerHTML += '<br/>请求失败';
+        }
+        console.error(e);
+    }
+}
+
+// ---------- 初始化滚动监听 ----------
+function initScrollListener() {
+    const msgsDiv = document.getElementById('messages');
+    if (msgsDiv) msgsDiv.addEventListener('scroll', handleScroll);
+}
+
+window.onload = async () => {
+    initScrollListener();
+    await fetchAPI('/api/chats'); // 确保 cookie 设置
+    await loadChatList();
+    document.getElementById('send').onclick = sendMessage;
+    document.getElementById('newChatBtn').onclick = newChat;
+    document.getElementById('deleteAllBtn').onclick = deleteAllChats;
+    const inputArea = document.getElementById('input');
+    inputArea.onkeydown = e => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    };
+};
 </script>
 </body>
 </html>
