@@ -42,7 +42,6 @@ if not app.debug:
     app.logger.setLevel(logging.INFO)
 
 MODEL_DISPLAY_NAME = "江洋大模型（联网搜索版）"
-# 注意：不再使用 ANSWER_PREFIX
 
 # ---------------------------- 本地 Ollama ----------------------------
 LOCAL_MODEL_NAME = "qwen2:1.5b-instruct"
@@ -114,7 +113,6 @@ def save_chat_message(chat_id, role, content):
     msg = json.dumps({"role": role, "content": content})
     redis_client.rpush(f"chat:{chat_id}:messages", msg)
     redis_client.hset(f"chat:{chat_id}:meta", "updated_at", time.time())
-    # 自动生成标题（如果是第一条用户消息）
     meta = redis_client.hgetall(f"chat:{chat_id}:meta")
     if meta.get("title") == "新对话" and role == "user":
         new_title = content[:20] + ("..." if len(content) > 20 else "")
@@ -123,31 +121,46 @@ def save_chat_message(chat_id, role, content):
         if user_id:
             redis_client.zadd(f"user:{user_id}:chats", {chat_id: time.time()})
 
-def delete_chat(chat_id):
-    """删除单个对话的所有数据"""
+def delete_last_assistant_message(chat_id):
+    if not redis_client:
+        return False
+    messages = get_chat_messages(chat_id)
+    new_messages = []
+    removed = False
+    for msg in reversed(messages):
+        if not removed and msg.get("role") == "assistant":
+            removed = True
+            continue
+        new_messages.insert(0, msg)
+    if removed:
+        redis_client.delete(f"chat:{chat_id}:messages")
+        for msg in new_messages:
+            redis_client.rpush(f"chat:{chat_id}:messages", json.dumps(msg))
+        redis_client.hset(f"chat:{chat_id}:meta", "updated_at", time.time())
+        return True
+    return False
+
+def delete_chat(user_id, chat_id):
     if not redis_client:
         return
-    # 删除消息列表
     redis_client.delete(f"chat:{chat_id}:messages")
-    # 删除元数据
     redis_client.delete(f"chat:{chat_id}:meta")
-    # 从用户的有序集合中移除
-    user_id = request.cookies.get('user_id')
-    if user_id:
-        redis_client.zrem(f"user:{user_id}:chats", chat_id)
+    redis_client.zrem(f"user:{user_id}:chats", chat_id)
 
 def delete_all_chats(user_id):
-    """删除用户的所有对话"""
     if not redis_client:
         return
-    chat_ids = redis_client.zrange(f"user:{user_id}:chats", 0, -1)
-    for chat_id in chat_ids:
-        redis_client.delete(f"chat:{chat_id}:messages")
-        redis_client.delete(f"chat:{chat_id}:meta")
+    chats = get_user_chats(user_id)
+    for chat in chats:
+        redis_client.delete(f"chat:{chat['id']}:messages")
+        redis_client.delete(f"chat:{chat['id']}:meta")
     redis_client.delete(f"user:{user_id}:chats")
 
 # ---------------------------- 本地模型调用 ----------------------------
 def call_local_llm(prompt, system_prompt="", stream=False, max_tokens=512):
+    # 确保 system_prompt 是字符串
+    if not isinstance(system_prompt, str):
+        system_prompt = str(system_prompt)
     full_prompt = system_prompt + "\n" + prompt if system_prompt else prompt
     payload = {
         "model": LOCAL_MODEL_NAME,
@@ -187,38 +200,16 @@ TOOL_DETECTION_PROMPT = """你是一个工具调用助手。根据用户的问�
 用户问题：{}
 """
 
-# ---------------------------- 云端模型备选 ----------------------------
+GREETING_KEYWORDS = ['你好', '您好', 'hi', 'hello', '嗨', '喂', '在吗', '在不在']
+
+# ---------------------------- 云端模型配置 ----------------------------
 MODELS_CONFIG = [
     {"name": "Qwen3-8B", "model_id": "Qwen/Qwen3-8B"},
     {"name": "DeepSeek-R1-Distill-Qwen-7B", "model_id": "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"}
 ]
 SILICONFLOW_API_KEY = os.environ.get('SILICONFLOW_API_KEY')
 if not SILICONFLOW_API_KEY:
-    app.logger.warning("未设置 SILICONFLOW_API_KEY，仅使用本地模型")
-
-def call_cloud_llm(messages, stream=False, tools=None, tool_choice="auto"):
-    if not SILICONFLOW_API_KEY:
-        return None, None
-    for model_conf in MODELS_CONFIG:
-        model_id = model_conf["model_id"]
-        try:
-            app.logger.info(f"云端尝试: {model_id}")
-            client = OpenAI(api_key=SILICONFLOW_API_KEY, base_url="https://api.siliconflow.cn/v1", timeout=20.0)
-            params = {"model": model_id, "messages": messages, "temperature": 0.7}
-            if tools:
-                params["tools"] = tools
-                params["tool_choice"] = tool_choice
-            if stream:
-                params["stream"] = True
-                return client.chat.completions.create(**params), model_id
-            else:
-                resp = client.chat.completions.create(**params)
-                if resp.choices and resp.choices[0].message.content:
-                    return resp, model_id
-        except Exception as e:
-            app.logger.error(f"云端模型 {model_id} 失败: {e}")
-            continue
-    return None, None
+    app.logger.warning("未设置 SILICONFLOW_API_KEY，深度思考模式将无法使用云端")
 
 # ---------------------------- 数据库 ----------------------------
 DB_CONFIG = {
@@ -375,8 +366,11 @@ TOOL_KEYWORDS_MAP = {
     'get_weather': ['天气', '气温', '会不会下雨', '今天天气', '天气预报']
 }
 
-SYSTEM_PROMPT = """你是江洋大模型。回答时请始终以“我”的第一人称角度，语言自然、客观、详细。
-如果用户询问工具执行的结果，请基于提供的工具结果来回答。"""
+SYSTEM_PROMPT = {
+    "role": "system",
+    "content": "你是江洋大模型。回答时请始终以“我”的第一人称角度，语言自然、客观、详细。如果用户询问工具执行的结果，请基于提供的工具结果来回答。"
+}
+SYSTEM_CONTENT = SYSTEM_PROMPT["content"]   # 提取字符串，避免反复索引
 
 def json_response(data, status=200):
     return Response(json.dumps(data, ensure_ascii=False, indent=2), status=status, mimetype='application/json')
@@ -441,18 +435,20 @@ def get_messages():
     messages = get_chat_messages(chat_id)
     return jsonify(messages)
 
-@app.route('/api/chat/<chat_id>', methods=['DELETE'])
-def delete_chat_route(chat_id):
-    delete_chat(chat_id)
+@app.route('/api/delete-chat', methods=['DELETE'])
+def delete_chat_api():
+    user_id = get_user_id()
+    chat_id = request.args.get('chat_id')
+    if not chat_id:
+        return jsonify({"error": "missing chat_id"}), 400
+    delete_chat(user_id, chat_id)
     return jsonify({"success": True})
 
-@app.route('/api/chats', methods=['DELETE'])
-def delete_all_chats_route():
+@app.route('/api/delete-all-chats', methods=['DELETE'])
+def delete_all_chats_api():
     user_id = get_user_id()
     delete_all_chats(user_id)
-    resp = jsonify({"success": True})
-    resp.set_cookie('user_id', user_id, max_age=365*24*3600)
-    return resp
+    return jsonify({"success": True})
 
 # ---------------------------- 主聊天路由 ----------------------------
 @app.route('/chat-stream', methods=['GET'])
@@ -461,135 +457,131 @@ def chat_stream():
     if not user_query:
         return json_response({'error': '请提供参数 q'}, 400)
 
+    # 纯问候直接返回，不进入任何处理
+    pure_greetings = ['你好', '您好', 'hi', 'hello', '嗨', '喂', '在吗', '在不在']
+    if user_query.strip().lower() in pure_greetings:
+        def simple_generate():
+            yield "你好！很高兴见到你。请问有什么可以帮助你的吗？"
+        return Response(stream_with_context(simple_generate()), mimetype='text/plain; charset=utf-8')
+
     chat_id = request.args.get('chat_id') or request.cookies.get('session_id')
     if not chat_id:
         user_id = get_user_id()
         chat_id = create_new_chat(user_id)
 
-    # 保存用户消息
-    save_chat_message(chat_id, "user", user_query)
+    mode = request.args.get('mode', 'deep')
+    is_fast_mode = (mode == 'fast')
+    regenerate = request.args.get('regenerate', 'false').lower() == 'true'
+
+    if regenerate:
+        delete_last_assistant_message(chat_id)
+    else:
+        save_chat_message(chat_id, "user", user_query)
 
     def generate():
-        # 不再输出任何前缀
-        # 加载该对话的历史消息
         history_messages = get_chat_messages(chat_id)
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-        for msg in history_messages:
-            messages.append(msg)
-        # 确保最后一条是用户消息（刚刚保存的）
-        if not messages or messages[-1].get("role") != "user":
-            messages.append({"role": "user", "content": user_query})
+        if len(history_messages) > 20:
+            history_messages = history_messages[-20:]
 
-        # ---------- 工具判断 ----------
-        tool_name = None
-        try:
-            detection_prompt = TOOL_DETECTION_PROMPT.format(user_query)
-            detection_response = call_local_llm(detection_prompt, system_prompt="", stream=False, max_tokens=20)
-            if detection_response and detection_response != "NO_TOOL":
-                candidate = detection_response.strip()
-                if candidate in TOOLS_LIST:
-                    tool_name = candidate
-                    app.logger.info(f"[工具判断] 模型决定调用: {tool_name}")
-        except Exception as e:
-            app.logger.error(f"[工具判断] 模型调用失败: {e}")
+        # 如果不是纯问候但包含问候词且没有明显问句/关键词，也可以简单回答（但“你好牛顿”会有“牛顿”，应走搜索）
+        # 改进：如果问题中包含任何非问候的实质性词汇（长度>2），就走搜索流程
+        has_substance = len(re.sub(r'[你好您好嗨喂在吗]', '', user_query)) > 2
+        is_simple_greeting = any(kw in user_query for kw in GREETING_KEYWORDS) and not has_substance
 
-        if not tool_name:
-            for tool, keywords in TOOL_KEYWORDS_MAP.items():
-                if any(kw in user_query for kw in keywords):
-                    tool_name = tool
-                    app.logger.info(f"[工具判断] 关键词触发: {tool_name}")
-                    break
-
-        # ---------- 执行工具 ----------
-        if tool_name and tool_name in TOOLS_LIST:
-            app.logger.info(f"[工具执行] 开始调用 {tool_name}")
-            try:
-                if tool_name == "run_python_code":
-                    code = generate_code_for_query(user_query)
-                    tool_result = run_python_code(code) if code else "无法生成有效的 Python 代码"
-                elif tool_name == "web_search":
-                    query = extract_search_query(user_query)
-                    tool_result = web_search(query)
-                elif tool_name == "read_file":
-                    fp = extract_filepath(user_query)
-                    tool_result = read_file(fp) if fp else "请指定要读取的文件名"
-                elif tool_name == "write_file":
-                    path, content = extract_write_content(user_query)
-                    tool_result = write_file(path, content) if path and content else "请使用格式：写入文件 文件名 内容为 ..."
-                elif tool_name == "get_weather":
-                    match = re.search(r'([^天气]+)天气', user_query)
-                    city = match.group(1).strip() if match else "北京"
-                    tool_result = get_weather(city)
-                else:
-                    tool_result = TOOLS_LIST[tool_name]()
-                messages.append({"role": "user", "content": f"工具 '{tool_name}' 执行结果：{tool_result}"})
-                app.logger.info(f"[工具执行] {tool_name} 完成")
-            except Exception as e:
-                error_msg = f"工具执行失败: {str(e)}"
-                messages.append({"role": "user", "content": error_msg})
-                app.logger.error(f"[工具执行] {tool_name} 异常: {e}")
-
-        # ---------- 知识性问题路由 ----------
-        knowledge_keywords = ['是什么', '什么是', '谁', '为什么', '介绍', '定义', '解释', '历史', '原理', '区别', '知道', '了解', '能否介绍', '说说']
-        is_knowledge = any(kw in user_query for kw in knowledge_keywords)
-        if is_knowledge and '1.5b' in LOCAL_MODEL_NAME and not tool_name:
-            app.logger.info("[路由] 知识性问题，使用云端模型")
-            cloud_resp, used = call_cloud_llm(messages, stream=True)
-            if cloud_resp:
-                full = []
-                for chunk in cloud_resp:
-                    if chunk.choices[0].delta.content:
-                        token = chunk.choices[0].delta.content
-                        full.append(token)
-                        yield token
-                assistant_content = "".join(full)
-                save_chat_message(chat_id, "assistant", assistant_content)
-                return
-
-        # ---------- 工具后优先云端 ----------
-        if tool_name:
-            app.logger.info("[路由] 工具已使用，调用云端模型生成最终回答")
-            cloud_resp, used = call_cloud_llm(messages, stream=True)
-            if cloud_resp:
-                full = []
-                for chunk in cloud_resp:
-                    if chunk.choices[0].delta.content:
-                        token = chunk.choices[0].delta.content
-                        full.append(token)
-                        yield token
-                assistant_content = "".join(full)
-                save_chat_message(chat_id, "assistant", assistant_content)
-                return
-
-        # ---------- 本地模型 ----------
-        app.logger.info("[路由] 使用本地模型生成回答")
-        conv_text = ""
-        for msg in messages:
-            if msg["role"] == "system":
-                conv_text += f"系统：{msg['content']}\n"
-            elif msg["role"] == "user":
-                conv_text += f"用户：{msg['content']}\n"
-        conv_text += "助手："
-        stream_gen = call_local_llm(conv_text, system_prompt="", stream=True, max_tokens=1024)
-        if stream_gen:
+        if is_simple_greeting:
+            app.logger.info(f"[{mode}模式] 简单问候，本地快速回答")
+            conv_text = f"用户：{user_query}\n助手："
+            stream_gen = call_local_llm(conv_text, system_prompt=SYSTEM_CONTENT, stream=True, max_tokens=100)
             full = []
-            for line in stream_gen:
-                if line:
-                    try:
-                        data = json.loads(line.decode('utf-8'))
-                        token = data.get("response", "")
-                        if token:
-                            full.append(token)
-                            yield token
-                    except:
-                        pass
-            assistant_content = "".join(full)
+            if stream_gen:
+                for line in stream_gen:
+                    if line:
+                        try:
+                            data = json.loads(line.decode('utf-8'))
+                            token = data.get("response", "")
+                            if token:
+                                full.append(token)
+                                yield token
+                        except:
+                            pass
+            assistant_content = "".join(full).strip()
+            if not assistant_content:
+                assistant_content = "你好！请问有什么可以帮助您的？"
+                yield assistant_content
+            else:
+                for token in full:
+                    yield token
             save_chat_message(chat_id, "assistant", assistant_content)
             return
 
-        err_msg = "无法生成回答，请稍后重试。"
-        yield err_msg
-        app.logger.error("所有模型均不可用")
+        # 非简单问候：强制搜索
+        app.logger.info(f"[{mode}模式] 强制联网搜索")
+        search_keyword = extract_search_query(user_query)
+        search_result = web_search(search_keyword, max_results=5)
+        context_prompt = f"以下是关于「{search_keyword}」的搜索结果，请结合这些信息回答用户的问题：\n{search_result}\n\n用户问题：{user_query}"
+
+        messages = [{"role": "system", "content": SYSTEM_CONTENT}]
+        for msg in history_messages:
+            messages.append(msg)
+        if messages and messages[-1].get("role") == "user":
+            messages[-1]["content"] = context_prompt
+        else:
+            messages.append({"role": "user", "content": context_prompt})
+
+        if is_fast_mode:
+            app.logger.info("[快速模式] 本地模型生成")
+            conv_text = ""
+            for msg in messages:
+                if msg["role"] == "system":
+                    conv_text += f"系统：{msg['content']}\n"
+                elif msg["role"] == "user":
+                    conv_text += f"用户：{msg['content']}\n"
+            conv_text += "助手："
+            stream_gen = call_local_llm(conv_text, system_prompt="", stream=True, max_tokens=1024)
+            if stream_gen:
+                full = []
+                for line in stream_gen:
+                    if line:
+                        try:
+                            data = json.loads(line.decode('utf-8'))
+                            token = data.get("response", "")
+                            if token:
+                                full.append(token)
+                                yield token
+                        except:
+                            pass
+                assistant_content = "".join(full)
+                save_chat_message(chat_id, "assistant", assistant_content)
+                return
+            else:
+                yield "\n[错误] 本地模型不可用"
+                return
+        else:
+            app.logger.info("[深度思考模式] 云端模型生成")
+            if not SILICONFLOW_API_KEY:
+                yield "\n[错误] 未配置云端 API Key"
+                return
+            try:
+                client = OpenAI(api_key=SILICONFLOW_API_KEY, base_url="https://api.siliconflow.cn/v1", timeout=30.0)
+                stream_resp = client.chat.completions.create(
+                    model=MODELS_CONFIG[0]["model_id"],
+                    messages=messages,
+                    stream=True,
+                    temperature=0.7
+                )
+                full = []
+                for chunk in stream_resp:
+                    if chunk.choices[0].delta.content:
+                        token = chunk.choices[0].delta.content
+                        full.append(token)
+                        yield token
+                assistant_content = "".join(full)
+                save_chat_message(chat_id, "assistant", assistant_content)
+                return
+            except Exception as e:
+                app.logger.error(f"云端失败: {e}")
+                yield "\n[错误] 云端不可用"
+                return
 
     response = Response(stream_with_context(generate()), mimetype='text/plain; charset=utf-8')
     user_id = get_user_id()

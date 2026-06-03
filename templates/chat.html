@@ -16,38 +16,55 @@
         * { box-sizing: border-box; }
         body { margin: 0; display: flex; height: 100vh; font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); }
 
-        .sidebar { width: 260px; background: var(--sidebar-bg); border-right: 1px solid var(--border); padding: 20px; display: flex; flex-direction: column; flex-shrink: 0; }
+        .sidebar { width: 260px; background: var(--sidebar-bg); border-right: 1px solid var(--border); padding: 20px; display: flex; flex-direction: column; flex-shrink: 0; height: 100%; }
         .logo { font-size: 18px; font-weight: bold; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; color: var(--primary); cursor: pointer; }
-        .new-chat-btn { background: var(--primary); color: white; border: none; border-radius: 24px; padding: 10px 12px; margin-bottom: 20px; cursor: pointer; font-size: 14px; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s; width: 100%; }
+        .new-chat-btn { background: var(--primary); color: white; border: none; border-radius: 24px; padding: 10px 12px; margin-bottom: 12px; cursor: pointer; font-size: 14px; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s; width: 100%; }
         .new-chat-btn:hover { background: #3a5fcc; transform: translateY(-1px); box-shadow: 0 2px 8px rgba(79,124,255,0.3); }
-        .delete-all-btn { background: #f1f5f9; color: #dc2626; border: 1px solid #e2e8f0; border-radius: 24px; padding: 8px 12px; margin-top: 20px; cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 6px; transition: 0.2s; width: 100%; }
-        .delete-all-btn:hover { background: #fee2e2; border-color: #dc2626; }
         .history-list { flex: 1; overflow-y: auto; margin-bottom: 16px; }
-        .history-item { padding: 10px; cursor: pointer; border-radius: 8px; transition: 0.2s; color: #64748b; font-size: 14px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
+        .history-item { padding: 10px; cursor: pointer; border-radius: 8px; transition: 0.2s; color: #64748b; font-size: 14px; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; }
         .history-item:hover { background: #f1f5f9; color: var(--text); }
         .history-item.active { background: #eef2ff; color: var(--primary); font-weight: 500; }
-        .delete-chat-btn { display: none; background: none; border: none; color: #dc2626; font-size: 14px; cursor: pointer; padding: 2px 6px; border-radius: 12px; }
-        .history-item:hover .delete-chat-btn { display: inline-block; }
-        .delete-chat-btn:hover { background: #fee2e2; }
+        .history-item .delete-icon { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #94a3b8; cursor: pointer; opacity: 0; transition: 0.2s; }
+        .history-item:hover .delete-icon { opacity: 1; }
+        .history-item .delete-icon:hover { background: #fee2e2; color: #ef4444; }
+        .delete-all-btn { background: #fee2e2; color: #ef4444; border: none; border-radius: 24px; padding: 8px 12px; margin-top: auto; cursor: pointer; font-size: 13px; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 6px; transition: 0.2s; width: 100%; }
+        .delete-all-btn:hover { background: #fecaca; transform: translateY(-1px); }
 
         .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
         #messages { flex: 1; overflow-y: auto; padding: 40px 20px; display: flex; flex-direction: column; gap: 24px; scroll-behavior: smooth; }
-        .msg { display: flex; gap: 16px; max-width: 800px; margin: 0 auto; width: 100%; animation: fadeIn 0.3s ease; }
-        .avatar { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; font-size: 16px; flex-shrink: 0; }
+        
+        .msg { display: flex; flex-direction: column; max-width: 800px; margin: 0 auto; width: 100%; animation: fadeIn 0.3s ease; }
+        .msg-row { display: flex; gap: 16px; align-items: flex-start; }
+        .avatar { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
         .ai .avatar { background: var(--primary); color: white; }
         .user .avatar { background: #e2e8f0; color: #475569; }
         .content { line-height: 1.7; padding: 6px 0; font-size: 15px; width: 100%; overflow-x: hidden; }
+        .msg-buttons { display: flex; gap: 12px; margin-left: 52px; margin-top: 8px; opacity: 0.7; transition: 0.2s; }
+        .msg:hover .msg-buttons { opacity: 1; }
+        .msg-btn { background: none; border: none; cursor: pointer; font-size: 13px; color: #64748b; padding: 4px 8px; border-radius: 16px; transition: 0.2s; display: inline-flex; align-items: center; gap: 4px; }
+        .msg-btn:hover { background: #f1f5f9; color: var(--primary); }
+        
         .thinking-box { display: flex; align-items: center; gap: 10px; color: var(--primary); font-size: 14px; font-weight: 500; }
         .pulse { display: flex; gap: 4px; }
         .pulse span { width: 6px; height: 6px; background: var(--primary); border-radius: 50%; animation: bounce 1.4s infinite ease-in-out both; }
         .pulse span:nth-child(1) { animation-delay: -0.32s; }
         .pulse span:nth-child(2) { animation-delay: -0.16s; }
         @keyframes bounce { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
-        .composer-wrap { padding: 20px; background: transparent; }
-        .composer { max-width: 800px; margin: auto; background: white; border: 1px solid var(--border); padding: 12px 20px; border-radius: 24px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-        textarea { flex: 1; border: none; background: transparent; outline: none; resize: none; font-size: 15px; height: 24px; max-height: 100px; padding: 0; color: var(--text); }
-        button { background: var(--primary); color: white; border: none; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; display: grid; place-items: center; transition: 0.2s; }
-        button:hover { opacity: 0.9; transform: scale(1.05); }
+
+        .input-area { max-width: 800px; margin: 0 auto 20px; width: 100%; }
+        .mode-switch { display: flex; gap: 12px; justify-content: flex-end; margin-bottom: 12px; }
+        .mode-option { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 6px 14px; border-radius: 30px; transition: 0.2s; font-size: 13px; background: white; border: 1px solid var(--border); color: #64748b; }
+        .mode-option.active { background: var(--primary); border-color: var(--primary); color: white; }
+        .mode-option .dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; }
+        .composer { background: white; border: 1px solid var(--border); padding: 12px 20px; border-radius: 24px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        textarea { flex: 1; border: none; background: transparent; outline: none; resize: none; font-size: 15px; height: 24px; max-height: 100px; padding: 0; color: var(--text); font-family: inherit; }
+        textarea:disabled { background: #f8fafc; cursor: not-allowed; }
+        .composer-actions { display: flex; gap: 8px; align-items: center; }
+        .send-btn, .stop-btn { background: var(--primary); color: white; border: none; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: 0.2s; font-size: 16px; line-height: 1; }
+        .stop-btn { background: #ef4444; }
+        .send-btn:hover, .stop-btn:hover { opacity: 0.9; transform: scale(1.05); }
+        .send-btn:disabled, .stop-btn:disabled { opacity: 0.5; transform: none; cursor: not-allowed; }
+
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
@@ -57,7 +74,7 @@
     <div class="logo">✦ 江洋大模型</div>
     <button class="new-chat-btn" id="newChatBtn">➕ 新建对话</button>
     <div class="history-list" id="historyList"></div>
-    <button class="delete-all-btn" id="deleteAllBtn">🗑️ 清空所有对话</button>
+    <button class="delete-all-btn" id="deleteAllBtn">🗑️ 全部删除</button>
 </div>
 
 <div class="main">
@@ -67,10 +84,21 @@
             <p>有什么我可以帮你的吗？</p>
         </div>
     </div>
-    <div class="composer-wrap">
+    <div class="input-area">
+        <div class="mode-switch" id="modeSwitch">
+            <div class="mode-option" data-mode="fast">
+                <span class="dot"></span> 快速模式
+            </div>
+            <div class="mode-option active" data-mode="deep">
+                <span class="dot"></span> 深度思考模式
+            </div>
+        </div>
         <div class="composer">
             <textarea id="input" placeholder="输入消息..."></textarea>
-            <button id="send">➤</button>
+            <div class="composer-actions">
+                <button class="send-btn" id="send">➤</button>
+                <button class="stop-btn" id="stop" style="display: none;">⏹️</button>
+            </div>
         </div>
     </div>
 </div>
@@ -81,6 +109,9 @@ let currentChatId = null;
 let userChats = [];
 let autoScroll = true;
 let scrollTimeout = null;
+let currentMode = 'deep';
+let isGenerating = false;
+let abortController = null;
 
 // ---------- 辅助函数 ----------
 function getUserId() {
@@ -97,7 +128,6 @@ async function fetchAPI(url, options = {}) {
     return res.json();
 }
 
-// 渲染侧边栏对话列表，并为每个对话添加删除按钮
 function renderChatList() {
     const container = document.getElementById('historyList');
     if (!container) return;
@@ -105,42 +135,64 @@ function renderChatList() {
     userChats.forEach(chat => {
         const div = document.createElement('div');
         div.className = 'history-item' + (currentChatId === chat.id ? ' active' : '');
-        const titleSpan = document.createElement('span');
-        titleSpan.textContent = chat.title || '新对话';
-        titleSpan.style.flex = '1';
-        titleSpan.style.overflow = 'hidden';
-        titleSpan.style.textOverflow = 'ellipsis';
-        titleSpan.style.whiteSpace = 'nowrap';
-        const delBtn = document.createElement('button');
-        delBtn.textContent = '✕';
-        delBtn.className = 'delete-chat-btn';
-        delBtn.title = '删除对话';
-        delBtn.onclick = (e) => {
-            e.stopPropagation();
-            deleteChat(chat.id);
+        div.textContent = chat.title || '新对话';
+        div.setAttribute('data-chat-id', chat.id);
+        div.onclick = (e) => {
+            if (e.target.classList.contains('delete-icon')) return;
+            switchChat(chat.id);
         };
-        div.appendChild(titleSpan);
-        div.appendChild(delBtn);
-        div.onclick = () => switchChat(chat.id);
+        div.oncontextmenu = (e) => {
+            e.preventDefault();
+            if (confirm(`删除对话「${chat.title}」？`)) {
+                deleteChat(chat.id);
+            }
+            return false;
+        };
+        const deleteSpan = document.createElement('span');
+        deleteSpan.className = 'delete-icon';
+        deleteSpan.innerHTML = '✕';
+        deleteSpan.onclick = (e) => {
+            e.stopPropagation();
+            if (confirm(`删除对话「${chat.title}」？`)) {
+                deleteChat(chat.id);
+            }
+        };
+        div.appendChild(deleteSpan);
         container.appendChild(div);
     });
 }
 
-// 加载某个对话的消息
+async function deleteChat(chatId) {
+    await fetchAPI(`/api/delete-chat?chat_id=${chatId}`, { method: 'DELETE' });
+    await loadChatList();
+    if (currentChatId === chatId) {
+        if (userChats.length > 0) {
+            await switchChat(userChats[0].id);
+        } else {
+            await newChat();
+        }
+    }
+}
+
+async function deleteAllChats() {
+    if (!confirm('⚠️ 删除全部对话，不可恢复，确定吗？')) return;
+    await fetchAPI('/api/delete-all-chats', { method: 'DELETE' });
+    await loadChatList();
+    if (userChats.length === 0) {
+        await newChat();
+    }
+}
+
 async function loadChatMessages(chatId) {
     const msgs = await fetchAPI(`/api/chat-messages?chat_id=${chatId}`);
     const messagesDiv = document.getElementById('messages');
     messagesDiv.innerHTML = '';
     const welcome = document.getElementById('welcome-screen');
     if (welcome) welcome.remove();
-    msgs.forEach(msg => {
+    msgs.forEach((msg, idx) => {
         const role = msg.role === 'user' ? 'user' : 'ai';
-        const contentDiv = appendMsgStatic(role);
-        if (msg.role === 'assistant') {
-            contentDiv.innerHTML = marked.parse(msg.content);
-        } else {
-            contentDiv.innerText = msg.content;
-        }
+        const messageDiv = createMessageElement(role, msg.content, idx);
+        messagesDiv.appendChild(messageDiv);
     });
     if (msgs.length === 0) {
         messagesDiv.innerHTML = '<div id="welcome-screen" style="text-align:center; padding-top:100px; color:#94a3b8;"><h1>江洋大模型</h1><p>有什么我可以帮你的吗？</p></div>';
@@ -148,17 +200,165 @@ async function loadChatMessages(chatId) {
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
-function appendMsgStatic(role) {
-    const messagesDiv = document.getElementById('messages');
-    const div = document.createElement('div');
-    div.className = `msg ${role}`;
-    div.innerHTML = `<div class="avatar">${role === 'ai' ? 'AI' : '我'}</div><div class="content"></div>`;
-    messagesDiv.appendChild(div);
-    return div.querySelector('.content');
+function createMessageElement(role, content, idx) {
+    const wrapper = document.createElement('div');
+    wrapper.className = `msg ${role}`;
+    const avatarText = role === 'ai' ? 'AI' : '我';
+    wrapper.innerHTML = `
+        <div class="msg-row">
+            <div class="avatar">${avatarText}</div>
+            <div class="content">${role === 'assistant' ? marked.parse(content) : escapeHtml(content)}</div>
+        </div>
+        <div class="msg-buttons">
+            <button class="msg-btn copy-btn">📋 复制</button>
+            ${role === 'user' ? '<button class="msg-btn edit-btn">✏️ 编辑</button>' : '<button class="msg-btn regenerate-btn">🔄 重新回答</button>'}
+        </div>
+    `;
+    // 复制按钮（静默）
+    const copyBtn = wrapper.querySelector('.copy-btn');
+    copyBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(content);
+    });
+    if (role === 'user') {
+        const editBtn = wrapper.querySelector('.edit-btn');
+        editBtn.addEventListener('click', () => {
+            document.getElementById('input').value = content;
+            document.getElementById('input').focus();
+        });
+    } else if (role === 'assistant') {
+        const regenBtn = wrapper.querySelector('.regenerate-btn');
+        regenBtn.addEventListener('click', async () => {
+            if (isGenerating) {
+                alert('请等待当前回答完成');
+                return;
+            }
+            // 查找上一条用户消息（在同级元素中向前查找 .user）
+            let prev = wrapper.previousElementSibling;
+            while (prev && !prev.classList.contains('user')) {
+                prev = prev.previousElementSibling;
+            }
+            if (!prev) {
+                alert('无法找到对应的用户消息');
+                return;
+            }
+            const userContentDiv = prev.querySelector('.content');
+            const userQuery = userContentDiv.innerText;
+            // 删除当前 AI 消息
+            wrapper.remove();
+            // 重新生成
+            await regenerateAnswer(userQuery);
+        });
+    }
+    return wrapper;
 }
 
-// 切换对话
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+async function regenerateAnswer(userQuery) {
+    if (isGenerating) return;
+    if (!currentChatId) return;
+
+    // 创建临时占位符
+    const tempWrapper = document.createElement('div');
+    tempWrapper.className = 'msg ai';
+    tempWrapper.innerHTML = `
+        <div class="msg-row">
+            <div class="avatar">AI</div>
+            <div class="content">
+                <div class="thinking-box" id="regen-thinking">
+                    <div class="pulse"><span></span><span></span><span></span></div>
+                    <span>思考中...</span>
+                </div>
+            </div>
+        </div>
+        <div class="msg-buttons"></div>
+    `;
+    document.getElementById('messages').appendChild(tempWrapper);
+    scrollToBottomIfNeeded();
+
+    isGenerating = true;
+    const sendBtn = document.getElementById('send');
+    const stopBtn = document.getElementById('stop');
+    sendBtn.style.display = 'none';
+    stopBtn.style.display = 'inline-flex';
+    document.getElementById('input').disabled = true;
+
+    abortController = new AbortController();
+    let fullText = '';
+    let firstContentReceived = false;
+    const thinkingBox = document.getElementById('regen-thinking');
+    const contentDiv = tempWrapper.querySelector('.content');
+
+    try {
+        const url = `/chat-stream?q=${encodeURIComponent(userQuery)}&chat_id=${currentChatId}&mode=${currentMode}&regenerate=true`;
+        const response = await fetch(url, { signal: abortController.signal });
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+
+            if (!firstContentReceived && (chunk.includes('🔧') || chunk.includes('✅'))) {
+                if (thinkingBox) {
+                    const span = thinkingBox.querySelector('span');
+                    if (span) {
+                        if (chunk.includes('🔧')) span.innerText = '正在调用工具...';
+                        if (chunk.includes('✅')) span.innerText = '正在整理结果...';
+                    }
+                }
+                continue;
+            }
+
+            const clean = chunk.replace(/【江洋大模型】|🤔 思考中.../g, '');
+            if (clean.trim()) {
+                if (!firstContentReceived) {
+                    firstContentReceived = true;
+                    if (thinkingBox) {
+                        thinkingBox.innerHTML = '<span style="color: #4f7cff;">思考结束</span>';
+                        await new Promise(resolve => setTimeout(resolve, 300));
+                    }
+                    contentDiv.innerHTML = '';
+                }
+                fullText += clean;
+                contentDiv.innerHTML = marked.parse(fullText);
+                scrollToBottomIfNeeded();
+            }
+        }
+        if (!firstContentReceived) {
+            if (thinkingBox) thinkingBox.innerHTML = '<span>思考结束</span>';
+            await new Promise(resolve => setTimeout(resolve, 300));
+            contentDiv.innerHTML = '';
+        }
+        const finalWrapper = createMessageElement('ai', fullText, Date.now());
+        tempWrapper.replaceWith(finalWrapper);
+    } catch (e) {
+        if (e.name === 'AbortError') {
+            contentDiv.innerHTML = '已停止生成。';
+        } else {
+            console.error(e);
+            contentDiv.innerHTML = '请求失败，请检查后端服务。';
+        }
+    } finally {
+        isGenerating = false;
+        abortController = null;
+        sendBtn.style.display = 'inline-flex';
+        stopBtn.style.display = 'none';
+        document.getElementById('input').disabled = false;
+        document.getElementById('input').focus();
+    }
+}
+
 async function switchChat(chatId) {
+    if (isGenerating) {
+        alert('请等待当前回答完成或点击停止。');
+        return;
+    }
     if (currentChatId === chatId) return;
     currentChatId = chatId;
     renderChatList();
@@ -166,26 +366,11 @@ async function switchChat(chatId) {
     autoScroll = true;
 }
 
-// 删除单个对话
-async function deleteChat(chatId) {
-    if (!confirm('确定要删除这个对话吗？')) return;
-    await fetchAPI(`/api/chat/${chatId}`, { method: 'DELETE' });
-    if (currentChatId === chatId) {
-        currentChatId = null;
-    }
-    await loadChatList();
-}
-
-// 清空所有对话
-async function deleteAllChats() {
-    if (!confirm('确定要删除所有对话吗？此操作不可撤销！')) return;
-    await fetchAPI('/api/chats', { method: 'DELETE' });
-    currentChatId = null;
-    await loadChatList();
-}
-
-// 新建对话
 async function newChat() {
+    if (isGenerating) {
+        alert('请等待当前回答完成或点击停止。');
+        return;
+    }
     const data = await fetchAPI('/api/new-chat', { method: 'POST' });
     if (data.chat_id) {
         await loadChatList();
@@ -193,7 +378,6 @@ async function newChat() {
     }
 }
 
-// 加载用户所有对话列表
 async function loadChatList() {
     const chats = await fetchAPI('/api/chats');
     userChats = chats;
@@ -201,16 +385,12 @@ async function loadChatList() {
     if (!currentChatId && userChats.length > 0) {
         await switchChat(userChats[0].id);
     } else if (userChats.length === 0 && !currentChatId) {
-        // 没有对话，显示欢迎屏幕，但不自动新建（让用户点击新建按钮）
-        const messagesDiv = document.getElementById('messages');
-        messagesDiv.innerHTML = '<div id="welcome-screen" style="text-align:center; padding-top:100px; color:#94a3b8;"><h1>江洋大模型</h1><p>有什么我可以帮你的吗？</p></div>';
+        await newChat();
     } else if (currentChatId && !userChats.find(c => c.id === currentChatId)) {
         if (userChats.length) await switchChat(userChats[0].id);
-        else currentChatId = null;
     }
 }
 
-// ---------- 滚动控制 ----------
 function handleScroll() {
     const msgsDiv = document.getElementById('messages');
     if (!msgsDiv) return;
@@ -226,14 +406,52 @@ function scrollToBottomIfNeeded() {
     if (msgsDiv) msgsDiv.scrollTop = msgsDiv.scrollHeight;
 }
 
-// ---------- 发送消息 ----------
+function initModeSwitch() {
+    const options = document.querySelectorAll('.mode-option');
+    options.forEach(opt => {
+        opt.addEventListener('click', () => {
+            if (isGenerating) {
+                alert('请等待当前回答完成后再切换模式。');
+                return;
+            }
+            options.forEach(o => o.classList.remove('active'));
+            opt.classList.add('active');
+            currentMode = opt.getAttribute('data-mode');
+            localStorage.setItem('chat_mode', currentMode);
+        });
+    });
+    const savedMode = localStorage.getItem('chat_mode');
+    if (savedMode && (savedMode === 'fast' || savedMode === 'deep')) {
+        currentMode = savedMode;
+        const activeOpt = document.querySelector(`.mode-option[data-mode="${currentMode}"]`);
+        if (activeOpt) {
+            document.querySelectorAll('.mode-option').forEach(o => o.classList.remove('active'));
+            activeOpt.classList.add('active');
+        }
+    }
+}
+
+function stopGeneration() {
+    if (abortController) {
+        abortController.abort();
+        abortController = null;
+    }
+    isGenerating = false;
+    document.getElementById('send').style.display = 'inline-flex';
+    document.getElementById('stop').style.display = 'none';
+    document.getElementById('input').disabled = false;
+}
+
 async function sendMessage() {
+    if (isGenerating) {
+        alert('正在生成回答，请先点击停止按钮。');
+        return;
+    }
     const input = document.getElementById('input');
     const q = input.value.trim();
     if (!q) return;
 
     if (!currentChatId) {
-        // 如果没有当前对话，先新建一个
         await newChat();
         if (!currentChatId) return;
     }
@@ -241,29 +459,47 @@ async function sendMessage() {
     const welcome = document.getElementById('welcome-screen');
     if (welcome) welcome.remove();
 
-    // 添加用户消息
-    const userDiv = appendMsgStatic('user');
-    userDiv.innerText = q;
+    // 用户消息
+    const userMsgDiv = createMessageElement('user', q, Date.now());
+    document.getElementById('messages').appendChild(userMsgDiv);
     input.value = '';
     scrollToBottomIfNeeded();
 
-    // AI 占位，显示思考动画
-    const aiContent = appendMsgStatic('ai');
-    const thinkingId = 'thinking-' + Date.now();
-    aiContent.innerHTML = `
-        <div class="thinking-box" id="${thinkingId}">
-            <div class="pulse"><span></span><span></span><span></span></div>
-            <span>思考中...</span>
-        </div>`;
+    // 临时 AI 占位符
+    const tempWrapper = document.createElement('div');
+    tempWrapper.className = 'msg ai';
+    tempWrapper.innerHTML = `
+        <div class="msg-row">
+            <div class="avatar">AI</div>
+            <div class="content">
+                <div class="thinking-box" id="send-thinking">
+                    <div class="pulse"><span></span><span></span><span></span></div>
+                    <span>思考中...</span>
+                </div>
+            </div>
+        </div>
+        <div class="msg-buttons"></div>
+    `;
+    document.getElementById('messages').appendChild(tempWrapper);
     scrollToBottomIfNeeded();
 
+    isGenerating = true;
+    const sendBtn = document.getElementById('send');
+    const stopBtn = document.getElementById('stop');
+    sendBtn.style.display = 'none';
+    stopBtn.style.display = 'inline-flex';
+    document.getElementById('input').disabled = true;
+
+    abortController = new AbortController();
     let fullText = '';
     let firstContentReceived = false;
+    const thinkingBox = document.getElementById('send-thinking');
+    const contentDiv = tempWrapper.querySelector('.content');
 
     try {
-        const url = `/chat-stream?q=${encodeURIComponent(q)}&chat_id=${currentChatId}`;
-        const res = await fetch(url);
-        const reader = res.body.getReader();
+        const url = `/chat-stream?q=${encodeURIComponent(q)}&chat_id=${currentChatId}&mode=${currentMode}`;
+        const response = await fetch(url, { signal: abortController.signal });
+        const reader = response.body.getReader();
         const decoder = new TextDecoder();
 
         while (true) {
@@ -271,57 +507,57 @@ async function sendMessage() {
             if (done) break;
             const chunk = decoder.decode(value, { stream: true });
 
-            // 处理状态提示（工具调用等），更新思考框中的文字，但不结束动画
             if (!firstContentReceived && (chunk.includes('🔧') || chunk.includes('✅'))) {
-                const box = document.getElementById(thinkingId);
-                if (box) {
-                    const textSpan = box.querySelector('span');
-                    if (textSpan) {
-                        if (chunk.includes('🔧')) textSpan.innerText = '正在调用工具...';
-                        if (chunk.includes('✅')) textSpan.innerText = '正在整理结果...';
+                if (thinkingBox) {
+                    const span = thinkingBox.querySelector('span');
+                    if (span) {
+                        if (chunk.includes('🔧')) span.innerText = '正在调用工具...';
+                        if (chunk.includes('✅')) span.innerText = '正在整理结果...';
                     }
                 }
                 continue;
             }
 
-            // 过滤掉可能残留的前缀（但后端已不再输出）
-            const clean = chunk.replace(/【江洋大模型（联网搜索版）】/g, '');
+            const clean = chunk.replace(/【江洋大模型】|🤔 思考中.../g, '');
             if (clean.trim()) {
                 if (!firstContentReceived) {
                     firstContentReceived = true;
-                    const box = document.getElementById(thinkingId);
-                    if (box) {
-                        box.innerHTML = '<span style="color: #4f7cff;">思考结束</span>';
+                    if (thinkingBox) {
+                        thinkingBox.innerHTML = '<span style="color: #4f7cff;">思考结束</span>';
                         await new Promise(resolve => setTimeout(resolve, 300));
                     }
-                    aiContent.innerHTML = '';
+                    contentDiv.innerHTML = '';
                 }
                 fullText += clean;
-                aiContent.innerHTML = marked.parse(fullText);
+                contentDiv.innerHTML = marked.parse(fullText);
                 scrollToBottomIfNeeded();
             }
         }
         if (!firstContentReceived) {
-            const box = document.getElementById(thinkingId);
-            if (box) box.innerHTML = '<span>思考结束</span>';
+            if (thinkingBox) thinkingBox.innerHTML = '<span>思考结束</span>';
             await new Promise(resolve => setTimeout(resolve, 300));
-            aiContent.innerHTML = '';
+            contentDiv.innerHTML = '';
         }
-        await loadChatList(); // 更新对话标题
+        const finalWrapper = createMessageElement('ai', fullText, Date.now());
+        tempWrapper.replaceWith(finalWrapper);
+        await loadChatList();
     } catch (e) {
-        if (!firstContentReceived) {
-            const box = document.getElementById(thinkingId);
-            if (box) box.innerHTML = '<span>思考出错</span>';
-            await new Promise(resolve => setTimeout(resolve, 500));
-            aiContent.innerHTML = '请求失败，请检查后端服务。';
+        if (e.name === 'AbortError') {
+            contentDiv.innerHTML = '已停止生成。';
         } else {
-            aiContent.innerHTML += '<br/>请求失败';
+            console.error(e);
+            contentDiv.innerHTML = '请求失败，请检查后端服务。';
         }
-        console.error(e);
+    } finally {
+        isGenerating = false;
+        abortController = null;
+        sendBtn.style.display = 'inline-flex';
+        stopBtn.style.display = 'none';
+        document.getElementById('input').disabled = false;
+        document.getElementById('input').focus();
     }
 }
 
-// ---------- 初始化滚动监听 ----------
 function initScrollListener() {
     const msgsDiv = document.getElementById('messages');
     if (msgsDiv) msgsDiv.addEventListener('scroll', handleScroll);
@@ -329,14 +565,16 @@ function initScrollListener() {
 
 window.onload = async () => {
     initScrollListener();
-    await fetchAPI('/api/chats'); // 确保 cookie 设置
+    initModeSwitch();
+    await fetchAPI('/api/chats');
     await loadChatList();
     document.getElementById('send').onclick = sendMessage;
+    document.getElementById('stop').onclick = stopGeneration;
     document.getElementById('newChatBtn').onclick = newChat;
     document.getElementById('deleteAllBtn').onclick = deleteAllChats;
     const inputArea = document.getElementById('input');
     inputArea.onkeydown = e => {
-        if (e.key === 'Enter' && !e.shiftKey) {
+        if (e.key === 'Enter' && !e.shiftKey && !isGenerating) {
             e.preventDefault();
             sendMessage();
         }
