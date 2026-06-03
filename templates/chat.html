@@ -3,172 +3,200 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>江洋大模型 Pro</title>
+    <title>江洋大模型 Pro - Liquid Glass WebGL Edition</title>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         :root {
-            --primary: #4f7cff;
-            --primary-glow: rgba(79, 124, 255, 0.2);
-            --sidebar-width: 300px;
-            --bg: #ffffff;
-            --main-bg: #f9fbff;
-            --text: #1e293b;
-            --border: #eef2f6;
-            --radius-lg: 18px;
-            --radius-md: 12px;
-            --radius-sm: 8px;
-            --gemini-glow: linear-gradient(135deg, rgba(79, 124, 255, 0.15), rgba(165, 180, 252, 0.15), rgba(244, 63, 94, 0.05));
-            --trans: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            --primary: #007aff;
+            --primary-glow: rgba(0, 122, 255, 0.4);
+            --sidebar-width: 320px;
+            
+            /* 模拟 WebGL 物理折射参数 */
+            --liquid-bg: rgba(255, 255, 255, 0.15);
+            --liquid-border: rgba(255, 255, 255, 0.45);
+            --liquid-highlight: rgba(255, 255, 255, 0.8);
+            --text-vibrant: #1a1a1c;
+            
+            /* 网站级复合阴影与色散模拟 */
+            --glass-shadow: 
+                0 8px 32px rgba(0, 0, 0, 0.05),
+                inset 0 1px 1px var(--liquid-highlight),
+                inset 0 -1px 2px rgba(255, 255, 255, 0.2);
+            
+            --apple-ease: cubic-bezier(0.2, 1, 0.2, 1);
+            --trans: all 0.6s var(--apple-ease);
         }
-        * { box-sizing: border-box; }
-        body { margin: 0; display: flex; height: 100vh; font-family: 'Inter', system-ui, sans-serif; background: var(--main-bg); color: var(--text); overflow: hidden; }
 
-        /* --- 侧边栏 --- */
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
+        
+        body { 
+            margin: 0; display: flex; height: 100vh; 
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; 
+            background:
+                radial-gradient(circle at 10% 10%, #dbeafe, transparent 40%),
+                radial-gradient(circle at 90% 10%, #fce7f3, transparent 40%),
+                radial-gradient(circle at 50% 90%, #ede9fe, transparent 50%),
+                #f8fafc;
+            color: var(--text-vibrant); overflow: hidden; 
+        }
+
+        /* --- 液态玻璃核心面板 --- */
+        .liquid-panel {
+            background: var(--liquid-bg);
+            backdrop-filter: blur(45px) saturate(280%) contrast(1.1) brightness(1.05);
+            -webkit-backdrop-filter: blur(45px) saturate(280%) contrast(1.1) brightness(1.05);
+            border: 1.5px solid var(--liquid-border);
+            box-shadow: var(--glass-shadow);
+            border-radius: 30px;
+        }
+
+        /* --- 侧边栏：完整液态背景 --- */
         .sidebar { 
-            position: fixed; 
-            left: 0; top: 0; bottom: 0;
-            width: var(--sidebar-width); 
-            z-index: 1100; 
-            padding: 15px;
-            background: transparent;
-            transform: translateX(-100%);
-            transition: var(--trans);
-            display: flex;
-            flex-direction: column;
+            position: fixed; left: 0; top: 0; bottom: 0;
+            width: var(--sidebar-width); z-index: 1100; 
+            padding: 24px; background: transparent;
+            transform: translateX(-102%); transition: var(--trans);
+            display: flex; flex-direction: column; visibility: hidden;
         }
-        .sidebar.active { transform: translateX(0); }
-
-        .sidebar-inner {
-            flex: 1;
-            background: #ffffff;
-            border: 1px solid var(--border);
-            border-radius: var(--radius-lg);
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            box-shadow: 0 12px 40px rgba(0,0,0,0.06);
+        .sidebar.active { transform: translateX(0); visibility: visible; }
+        .sidebar-inner { 
+            flex: 1; display: flex; flex-direction: column; padding: 30px 20px;
+            position: relative; overflow: hidden;
         }
 
-        /* --- 切换按钮 --- */
+        /* 模拟 WebGL 动态色散线条 */
+        .sidebar-inner::before {
+            content: ""; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.2) 0%, transparent 60%);
+            animation: rotateLiquid 20s linear infinite; pointer-events: none;
+        }
+        @keyframes rotateLiquid { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
         .sidebar-toggle { 
-            position: fixed;
-            width: 42px; 
-            height: 42px; 
-            border-radius: var(--radius-md); 
-            border: 1px solid var(--border); 
-            background: white; 
-            cursor: pointer; 
-            font-size: 20px; 
-            color: #64748b; 
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05); 
-            transition: var(--trans);
+            position: fixed; width: 52px; height: 52px; border-radius: 50%; z-index: 1300; left: 24px; top: 20px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            background: rgba(255, 255, 255, 0.3); border: 1px solid var(--liquid-border);
+            backdrop-filter: blur(20px); transition: var(--trans);
+        }
+        .sidebar-toggle:hover { transform: scale(1.1) rotate(90deg); background: white; }
+
+        /* --- 历史项过渡 --- */
+        .history-item { 
+            padding: 16px; border-radius: 20px; margin-bottom: 12px; cursor: pointer; transition: var(--trans);
+            background: rgba(255, 255, 255, 0.1); border: 1px solid transparent; 
+            display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: 600;
+        }
+        .history-item:hover { background: rgba(255, 255, 255, 0.4); transform: scale(1.02); }
+        .history-item.active { background: white; color: var(--primary); box-shadow: var(--glass-shadow); }
+
+        /* --- 主界面 --- */
+        .main { flex: 1; display: flex; flex-direction: column; height: 100vh; position: relative; transition: var(--trans); }
+        body.sidebar-open .main { filter: blur(12px); transform: scale(0.96) translateX(40px); pointer-events: none; }
+
+        #messages { flex: 1; overflow-y: auto; padding: 20px 40px; scroll-behavior: smooth; }
+        .msg-container { max-width: 850px; margin: 0 auto 40px; width: 100%; transition: var(--trans); }
+
+        /* --- 头像锁定大小 (No Scaling) --- */
+        .avatar { 
+            width: 48px; height: 48px; border-radius: 16px; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center; 
+            font-weight: 800; font-size: 18px; position: relative;
+            box-shadow: inset 0 1px 2px rgba(255,255,255,0.4);
+        }
+        .ai .avatar { background: linear-gradient(135deg, #007aff, #5856d6); color: white; box-shadow: 0 8px 24px rgba(0,122,255,0.3); }
+        .user .avatar { background: rgba(255,255,255,0.7); border: 1px solid var(--liquid-border); color: #4b5563; }
+
+        /* --- 进度条置顶 --- */
+        .progress-container {
+            position: absolute; top: -10px; left: 30px; right: 30px; height: 4px;
+            background: rgba(255,255,255,0.2); border-radius: 2px; overflow: hidden;
+            display: none; transition: opacity 0.3s;
+        }
+        .progress-bar {
+            height: 100%; width: 30%; background: var(--primary);
+            box-shadow: 0 0 10px var(--primary-glow);
+            animation: progressMove 1.5s infinite ease-in-out;
+            border-radius: 2px;
+        }
+        @keyframes progressMove { 0% { left: -30%; } 100% { left: 100%; } }
+
+        /* --- 输入区 --- */
+        .input-area { position: relative; max-width: 850px; margin: 0 auto 40px; width: 100%; padding: 0 25px; }
+        .composer { padding: 18px 24px; display: flex; align-items: center; gap: 15px; position: relative; z-index: 10; }
+        
+        .mode-switch {
+            position: absolute; top: 12px; right: 90px;
+            display: flex; gap: 2px; padding: 3px; border-radius: 14px;
+            background: rgba(255, 255, 255, 0.2); backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .mode-option {
+            padding: 6px 14px; border-radius: 11px; font-size: 11px; font-weight: 700;
+            cursor: pointer; transition: var(--trans); color: #64748b;
+        }
+        .mode-option.active { background: white; color: var(--primary); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+
+        textarea { 
+            flex: 1; border: none; background: transparent; font-size: 17px; color: var(--text-vibrant); 
+            resize: none; padding-right: 180px; font-weight: 500;
+        }
+
+        .send-btn { 
+            width: 46px; height: 46px; border-radius: 50%; border: none; background: var(--primary); 
+            color: white; cursor: pointer; transition: var(--trans); display: flex; align-items: center; justify-content: center;
+        }
+        .send-btn:hover { transform: scale(1.1) rotate(-5deg); box-shadow: 0 10px 25px var(--primary-glow); }
+
+        /* --- 弹窗与过渡 --- */
+        .modal-overlay { 
+            position: fixed; inset: 0; background: rgba(15, 23, 42, 0.1); 
+            backdrop-filter: blur(25px); z-index: 2000; display: none; 
+            align-items: center; justify-content: center; transition: var(--trans);
+        }
+        .modal-card { 
+            width: 340px; padding: 40px; text-align: center; 
+            transform: scale(0.85); opacity: 0; transition: var(--trans);
+        }
+        .modal-overlay.active { display: flex; }
+        .modal-overlay.active .modal-card { transform: scale(1); opacity: 1; }
+
+        /* 思考点动效 + 文案 */
+        .thinking-container {
             display: flex;
             align-items: center;
-            justify-content: center;
-            z-index: 1300;
-            left: 20px;
-            top: 20px;
+            gap: 8px;
         }
-        body.sidebar-open .sidebar-toggle { left: calc(var(--sidebar-width) + 10px); }
-        .sidebar-toggle:hover { border-color: var(--primary); color: var(--primary); box-shadow: 0 4px 15px var(--primary-glow); }
-
-        .main { 
-            flex: 1; display: flex; flex-direction: column; height: 100vh;
-            background: var(--main-bg); transition: var(--trans);
-            margin-left: 0; position: relative;
+        .thinking-dots {
+            display: flex;
+            gap: 4px;
         }
-        body.sidebar-open .main { margin-left: var(--sidebar-width); }
-
-        /* --- 顶部栏 --- */
-        .header-bar { 
-            padding: 0 20px;
-            display: flex; 
-            align-items: center; 
-            height: 82px; 
-            width: 100%; 
-            position: relative;
-            z-index: 900;
+        .thinking-dots .dot {
+            width: 8px;
+            height: 8px;
+            background: var(--primary);
+            border-radius: 50%;
+            animation: dotAnim 1.4s infinite ease-in-out;
         }
-        .header-title { 
-            font-weight: 600; 
-            color: #64748b; 
-            font-size: 18px; 
-            margin-left: 65px; 
-            transition: var(--trans);
+        .thinking-dots .dot:nth-child(2) { animation-delay: 0.2s; }
+        .thinking-dots .dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes dotAnim { 0%, 100% { transform: scale(1); opacity: 0.3; } 50% { transform: scale(1.4); opacity: 1; filter: blur(0.5px); } }
+        .thinking-text {
+            font-size: 14px;
+            color: var(--primary);
+            font-weight: 500;
+            margin-left: 4px;
         }
-        body.sidebar-open .header-title { margin-left: 60px; }
 
-        .logo { font-size: 18px; font-weight: 800; margin-bottom: 25px; color: var(--primary); display: flex; align-items: center; gap: 8px; }
-        .new-chat-btn { background: var(--primary); color: white; border: none; border-radius: var(--radius-md); padding: 12px; margin-bottom: 20px; cursor: pointer; font-weight: 600; width: 100%; box-shadow: 0 4px 12px var(--primary-glow); transition: var(--trans); }
-        .new-chat-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 18px var(--primary-glow); }
-        .history-list { flex: 1; overflow-y: auto; padding-right: 5px; }
-        .history-item { padding: 12px; border-radius: var(--radius-md); cursor: pointer; font-size: 14px; color: #64748b; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center; transition: var(--trans); border: 1px solid transparent; }
-        .history-item:hover { background: #f1f5f9; }
-        .history-item.active { background: #eef2ff; color: var(--primary); font-weight: 600; border-color: #dbeafe; }
-        .delete-icon { opacity: 0; color: #94a3b8; transition: 0.2s; padding: 4px; border-radius: var(--radius-sm); font-style: normal; line-height: 1; }
-        .history-item:hover .delete-icon { opacity: 1; }
-        .delete-icon:hover { background: #fee2e2; color: #ef4444; }
-
-        /* 对话区 */
-        #messages { flex: 1; overflow-y: auto; padding: 10px 30px 40px; scroll-behavior: smooth; }
-        .msg-container { max-width: 800px; margin: 0 auto 32px; width: 100%; animation: fadeInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
-        @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        .msg-row { display: flex; gap: 20px; }
-        .avatar { width: 38px; height: 38px; border-radius: var(--radius-md); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-weight: bold; }
-        .ai .avatar { background: var(--primary); color: white; box-shadow: 0 4px 10px var(--primary-glow); }
-        .user .avatar { background: white; border: 1px solid var(--border); color: #64748b; }
-        .content { line-height: 1.8; font-size: 15.5px; color: #334155; padding-top: 5px; }
-
-        /* 操作按钮 */
-        .action-buttons { margin-left: 58px; margin-top: 10px; display: flex; gap: 12px; opacity: 0; transition: 0.3s; }
-        .msg-container:hover .action-buttons { opacity: 1; }
-        .action-btn { background: white; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 5px 12px; font-size: 12px; color: #64748b; cursor: pointer; transition: var(--trans); }
-        .action-btn:hover { border-color: var(--primary); color: var(--primary); background: #f8faff; }
-
-        /* 思考动画 */
-        .thinking-wrapper {
-            display: flex; align-items: center; gap: 12px; padding: 12px 18px;
-            background: white; border-radius: var(--radius-lg); border: 1px solid var(--border); width: fit-content;
-        }
-        .shimmer {
-            width: 18px; height: 18px; background: linear-gradient(90deg, #4f7cff 25%, #a5b4fc 50%, #4f7cff 75%);
-            background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 50%;
-        }
-        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-
-        /* 输入区 */
-        .input-area { max-width: 800px; margin: 0 auto 30px; width: 100%; padding: 0 20px; position: relative; }
-        .mode-switch { 
-            display: flex; gap: 8px; justify-content: center; margin-bottom: 14px;
-            background: var(--gemini-glow); padding: 5px; border-radius: var(--radius-lg);
-            width: fit-content; margin-left: auto; margin-right: auto;
-            backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.6);
-        }
-        .mode-switch.locked { opacity: 0.4; pointer-events: none; filter: grayscale(0.8); }
-        .mode-option { padding: 8px 20px; border-radius: var(--radius-md); font-size: 13px; cursor: pointer; color: #64748b; transition: var(--trans); font-weight: 500; }
-        .mode-option.active { background: #ffffff; color: var(--primary); box-shadow: 0 4px 12px rgba(79, 124, 255, 0.1); font-weight: 600; }
-
-        .composer { background: white; border: 1px solid var(--border); padding: 12px 15px 12px 25px; border-radius: var(--radius-lg); display: flex; align-items: center; gap: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.04); }
-        textarea { flex: 1; border: none; outline: none; resize: none; font-size: 16px; max-height: 150px; font-family: inherit; }
-        .send-btn, .stop-btn { width: 40px; height: 40px; border-radius: var(--radius-md); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: var(--trans); }
-        .send-btn { background: var(--primary); color: white; font-size: 18px; }
-        .stop-btn { background: #fff1f2; color: #f43f5e; border: 1px solid #fecdd3; font-size: 16px; display: none; }
-        .stop-btn::before { content: '■'; }
-
-        .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(8px); z-index: 2000; display: none; align-items: center; justify-content: center; }
-        .modal-card { background: white; padding: 30px; border-radius: var(--radius-lg); width: 340px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.1); }
-        .modal-btns { display: flex; gap: 10px; margin-top: 25px; }
-        .modal-btns button { flex: 1; padding: 12px; border-radius: var(--radius-md); border: none; cursor: pointer; font-weight: 600; }
     </style>
 </head>
 <body>
 
 <div class="modal-overlay" id="confirmModal">
-    <div class="modal-card">
-        <h3 id="confirmMsg">确认操作？</h3>
-        <div class="modal-btns">
-            <button style="background:#f1f5f9; color:#64748b;" id="modalCancel">取消</button>
-            <button style="background:#ef4444; color:white;" id="modalOk">确定</button>
+    <div class="liquid-panel modal-card">
+        <h3 style="margin-top:0;">确定操作吗？</h3>
+        <div style="display:flex; gap:12px; margin-top:30px;">
+            <button class="history-item" style="flex:1; justify-content:center;" id="modalCancel">取消</button>
+            <button class="history-item active" style="flex:1; justify-content:center; background:#ff3b30; color:white; border:none;" id="modalOk">确定</button>
         </div>
     </div>
 </div>
@@ -176,47 +204,72 @@
 <button class="sidebar-toggle" id="sidebarToggle">☰</button>
 
 <div class="sidebar" id="sidebar">
-    <div class="sidebar-inner">
-        <div class="logo">✦ 江洋大模型</div>
-        <button class="new-chat-btn" id="newChatBtn">＋ 新建对话</button>
+    <div class="sidebar-inner liquid-panel">
+        <div style="font-size: 22px; font-weight: 900; margin-bottom: 30px; letter-spacing: -0.5px;">✦ 江洋 Pro</div>
+        <button class="history-item active" id="newChatBtn" style="justify-content:center; border:none; margin-bottom: 20px;">＋ 新对话</button>
         <div class="history-list" id="historyList"></div>
-        <button id="deleteAllBtn" style="width:100%; padding:10px; border:1px solid #fee2e2; background:transparent; color:#ef4444; border-radius:var(--radius-md); cursor:pointer; margin-top:10px; font-size: 13px;">🗑️ 全部删除</button>
+        <button id="deleteAllBtn" style="background:rgba(255,59,48,0.1); color:#ff3b30; border:none; padding:15px; border-radius:20px; font-weight:700; cursor:pointer;">🗑️ 清空所有</button>
     </div>
 </div>
 
 <div class="main">
-    <div class="header-bar">
-        <span class="header-title">江洋大模型 Pro</span>
+    <div style="height:90px; display:flex; align-items:center; padding:0 85px;">
+        <span style="font-size: 20px; font-weight: 800; opacity:0.8;">江洋大模型 Pro</span>
     </div>
     <div id="messages"></div>
     <div class="input-area">
-        <div class="mode-switch" id="modeSwitch">
-            <div class="mode-option" data-mode="fast">快速模式</div>
-            <div class="mode-option active" data-mode="deep">深度思考模式</div>
+        <div class="progress-container" id="progressBar">
+            <div class="progress-bar" style="position: relative;"></div>
         </div>
-        <div class="composer">
-            <textarea id="input" placeholder="在这输入消息..." rows="1"></textarea>
+        <div class="composer liquid-panel">
+            <div class="mode-switch" id="modeSwitch">
+                <div class="mode-option" data-mode="fast">快速</div>
+                <div class="mode-option active" data-mode="deep">深度思考</div>
+            </div>
+            <textarea id="input" placeholder="有什么想问的？" rows="1"></textarea>
             <button class="send-btn" id="send">➤</button>
-            <button class="stop-btn" id="stop"></button>
+            <button id="stop" style="display:none; width:44px; height:44px; border-radius:50%; border:1px solid #ff3b30; color:#ff3b30; background:transparent; cursor:pointer;">■</button>
         </div>
     </div>
 </div>
 
 <script>
-window.confirm = function(message) {
-    const modal = document.getElementById('confirmModal');
-    document.getElementById('confirmMsg').innerText = message;
+/* 核心逻辑注入 */
+const modal = document.getElementById('confirmModal');
+window.confirm = function() {
     modal.style.display = 'flex';
+    setTimeout(() => modal.classList.add('active'), 10);
     return new Promise((resolve) => {
-        document.getElementById('modalOk').onclick = () => { modal.style.display = 'none'; resolve(true); };
-        document.getElementById('modalCancel').onclick = () => { modal.style.display = 'none'; resolve(false); };
+        document.getElementById('modalOk').onclick = () => { modal.classList.remove('active'); setTimeout(()=>modal.style.display='none', 600); resolve(true); };
+        document.getElementById('modalCancel').onclick = () => { modal.classList.remove('active'); setTimeout(()=>modal.style.display='none', 600); resolve(false); };
     });
 };
 
 const sidebar = document.getElementById('sidebar');
-document.getElementById('sidebarToggle').onclick = () => {
+const toggleBtn = document.getElementById('sidebarToggle');
+const input = document.getElementById('input');
+const messagesDiv = document.getElementById('messages');
+const historyList = document.getElementById('historyList');
+const progressBar = document.getElementById('progressBar');
+
+// 切换侧边栏并移动按钮位置
+function toggleSidebar() {
     sidebar.classList.toggle('active');
     document.body.classList.toggle('sidebar-open');
+    if (sidebar.classList.contains('active')) {
+        toggleBtn.style.left = 'calc(var(--sidebar-width) + 20px)';
+    } else {
+        toggleBtn.style.left = '24px';
+    }
+}
+toggleBtn.onclick = toggleSidebar;
+
+document.querySelector('.main').onclick = () => {
+    if (sidebar.classList.contains('active')) {
+        sidebar.classList.remove('active');
+        document.body.classList.remove('sidebar-open');
+        toggleBtn.style.left = '24px';
+    }
 };
 
 marked.setOptions({ breaks: true, gfm: true });
@@ -232,71 +285,40 @@ async function fetchAPI(url, options = {}) {
 }
 
 function renderChatList() {
-    const container = document.getElementById('historyList');
-    container.innerHTML = '';
+    historyList.innerHTML = '';
     userChats.forEach(chat => {
         const div = document.createElement('div');
         div.className = 'history-item' + (currentChatId === chat.id ? ' active' : '');
-        div.innerHTML = `<span>${chat.title || '新对话'}</span><i class="delete-icon">✕</i>`;
-        div.onclick = (e) => {
-            if (e.target.classList.contains('delete-icon')) return;
-            switchChat(chat.id);
-            if (window.innerWidth < 768) { sidebar.classList.remove('active'); document.body.classList.remove('sidebar-open'); }
-        };
-        div.querySelector('.delete-icon').onclick = async (e) => {
-            e.stopPropagation();
-            if (await confirm(`确定删除对话「${chat.title || '新对话'}」？`)) deleteChat(chat.id);
-        };
-        container.appendChild(div);
+        div.innerHTML = `<span>${chat.title || '新对话'}</span><i style="font-style:normal; opacity:0.5;">✕</i>`;
+        div.onclick = (e) => { if (e.target.tagName !== 'I') switchChat(chat.id); };
+        div.querySelector('i').onclick = async (e) => { e.stopPropagation(); if (await confirm()) deleteChat(chat.id); };
+        historyList.appendChild(div);
     });
 }
 
-// --- 智能新建对话逻辑 ---
-async function handleNewChatClick() {
-    if (isGenerating) abortController?.abort();
-    
-    // 1. 查找列表中是否已有“空对话”（标题通常为“新对话”且没有消息）
-    // 这里通过 userChats 数组查找 title 为空或为默认值的项
-    const emptyChat = userChats.find(chat => !chat.title || chat.title === '新对话');
-    
-    if (emptyChat) {
-        // 如果找到了空对话，直接跳转过去，不请求后端新建
-        switchChat(emptyChat.id);
-    } else {
-        // 如果所有对话都有内容，则创建一个真的新对话
-        await createNewChat();
-    }
-}
-
 async function createNewChat() {
+    if (isGenerating) abortController?.abort();
     const data = await fetchAPI('/api/new-chat', { method: 'POST' });
     currentChatId = data.chat_id; 
-    await loadChatList(); 
-    switchChat(currentChatId);
+    await loadChatList(); switchChat(currentChatId);
+    sidebar.classList.remove('active'); document.body.classList.remove('sidebar-open');
+    toggleBtn.style.left = '24px';
 }
 
 async function deleteChat(chatId) {
-    if (isGenerating && currentChatId === chatId) abortController?.abort();
     await fetchAPI(`/api/delete-chat?chat_id=${chatId}`, { method: 'DELETE' });
     userChats = await fetchAPI('/api/chats');
-    if (userChats.length > 0) {
-        switchChat(userChats[0].id);
-    } else {
-        await createNewChat();
-    }
+    if (userChats.length > 0) switchChat(userChats[0].id);
+    else await createNewChat();
 }
 
 async function switchChat(chatId) {
-    if (isGenerating && abortController) abortController.abort();
     currentChatId = chatId;
     renderChatList();
     const msgs = await fetchAPI(`/api/chat-messages?chat_id=${chatId}`);
-    const messagesDiv = document.getElementById('messages');
     messagesDiv.innerHTML = '';
     if (msgs.length === 0) {
-        messagesDiv.innerHTML = `<div id="welcome-screen" style="text-align:center; padding-top:100px; color:#94a3b8;">
-            <h1 style="color: #1e293b; font-size: 28px; margin-bottom: 10px;">✦ 你好，我是江洋</h1>
-            <p>今天有什么我可以帮你的吗？</p></div>`;
+        messagesDiv.innerHTML = `<div style="text-align:center; padding-top:150px; opacity:0.2;"><h1>✦ 江洋 Pro</h1><p>物理级液态折射引擎</p></div>`;
     } else {
         msgs.forEach(msg => messagesDiv.appendChild(createMessageElement(msg.role === 'user' ? 'user' : 'ai', msg.content)));
     }
@@ -307,92 +329,79 @@ function createMessageElement(role, content) {
     const container = document.createElement('div');
     container.className = `msg-container ${role}`;
     const avatarTxt = role === 'ai' ? '✦' : 'U';
-    const contentHtml = role === 'ai' ? marked.parse(content) : escapeHtml(content);
-    container.innerHTML = `<div class="msg-row"><div class="avatar">${avatarTxt}</div><div class="content">${contentHtml}</div></div>
-        <div class="action-buttons">
-            <button class="action-btn" onclick="copyText(this, \`${content.replace(/`/g, '\\`')}\`)">📋 复制</button>
-            ${role === 'user' ? '<button class="action-btn" onclick="editMsg(this)">✏️ 编辑</button>' : ''}
+    const contentHtml = role === 'ai' ? marked.parse(content) : content;
+    container.innerHTML = `
+        <div style="display:flex; gap:20px;">
+            <div class="avatar">${avatarTxt}</div>
+            <div class="content" style="flex:1; line-height:1.75; font-size:16px;">${contentHtml}</div>
+        </div>
+        <div style="margin-left:68px; margin-top:12px; display:flex; gap:15px; opacity:0.3; font-size:12px;">
+            <span style="cursor:pointer;" onclick="navigator.clipboard.writeText(\`${content.replace(/`/g, '\\`')}\`)">复制</span>
         </div>`;
     return container;
 }
 
-function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
-function copyText(btn, text) { navigator.clipboard.writeText(text); btn.innerText = '✅ 已复制'; setTimeout(() => btn.innerText = '📋 复制', 2000); }
-function editMsg(btn) { document.getElementById('input').value = btn.parentElement.parentElement.querySelector('.content').innerText; document.getElementById('input').focus(); }
-
 async function sendMessage() {
-    const input = document.getElementById('input');
     const q = input.value.trim();
     if (!q || isGenerating) return;
     if (!currentChatId) await createNewChat();
-    document.getElementById('welcome-screen')?.remove();
-    const messagesDiv = document.getElementById('messages');
+
     messagesDiv.appendChild(createMessageElement('user', q));
-    input.value = '';
-    input.style.height = 'auto';
+    input.value = ''; input.style.height = 'auto';
+
     const aiMsg = document.createElement('div');
     aiMsg.className = 'msg-container ai';
-    aiMsg.innerHTML = `<div class="msg-row"><div class="avatar">✦</div><div class="content"><div class="thinking-wrapper"><div class="shimmer"></div><span style="color:#64748b; font-size:14px;">江洋正在思考...</span></div></div></div>`;
+    // 修改：三点后面加文案“思考中...”
+    aiMsg.innerHTML = `<div style="display:flex; gap:20px;"><div class="avatar">✦</div><div class="content"><div class="thinking-container"><div class="thinking-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div><span class="thinking-text">思考中...</span></div></div></div>`;
     messagesDiv.appendChild(aiMsg);
     const contentDiv = aiMsg.querySelector('.content');
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
     isGenerating = true;
-    document.getElementById('modeSwitch').classList.add('locked');
+    progressBar.style.display = 'block';
     document.getElementById('send').style.display = 'none';
     document.getElementById('stop').style.display = 'flex';
     abortController = new AbortController();
+
     try {
         const response = await fetch(`/chat-stream?q=${encodeURIComponent(q)}&chat_id=${currentChatId}&mode=${currentMode}`, { signal: abortController.signal });
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let fullText = '';
-        let isFirst = true;
+        let first = true;
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            if (isFirst) { contentDiv.innerHTML = ''; isFirst = false; }
-            fullText += decoder.decode(value).replace(/【江洋大模型】/g, '');
+            if (first) { contentDiv.innerHTML = ''; first = false; }
+            fullText += decoder.decode(value);
             contentDiv.innerHTML = marked.parse(fullText);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
-    } catch (e) { if (e.name !== 'AbortError') contentDiv.innerHTML = '连接异常。'; }
-    finally {
+    } catch (e) {} finally {
         isGenerating = false;
-        document.getElementById('modeSwitch').classList.remove('locked');
+        progressBar.style.display = 'none';
         document.getElementById('send').style.display = 'flex';
         document.getElementById('stop').style.display = 'none';
         await loadChatList();
     }
 }
 
-async function loadChatList() {
-    userChats = await fetchAPI('/api/chats');
-    renderChatList();
-}
+async function loadChatList() { userChats = await fetchAPI('/api/chats'); renderChatList(); }
 
 window.onload = async () => {
     await loadChatList();
     if (userChats.length > 0) switchChat(userChats[0].id);
     else await createNewChat();
-    
+
     document.getElementById('send').onclick = sendMessage;
     document.getElementById('stop').onclick = () => abortController?.abort();
-    document.getElementById('newChatBtn').onclick = handleNewChatClick;
-    document.getElementById('deleteAllBtn').onclick = async () => {
-        if(await confirm('确定清空所有对话？')) {
-            await fetchAPI('/api/delete-all-chats', { method: 'DELETE' });
-            currentChatId = null; userChats = []; renderChatList(); await createNewChat();
-        }
-    };
-    const input = document.getElementById('input');
+    document.getElementById('newChatBtn').onclick = createNewChat;
+    document.getElementById('deleteAllBtn').onclick = async () => { if (await confirm()) { await fetchAPI('/api/delete-all-chats', { method: 'DELETE' }); userChats=[]; renderChatList(); await createNewChat(); } };
+    
     input.oninput = function() { this.style.height = 'auto'; this.style.height = this.scrollHeight + 'px'; };
     input.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }};
     document.querySelectorAll('.mode-option').forEach(opt => {
-        opt.onclick = () => {
-            document.querySelectorAll('.mode-option').forEach(o => o.classList.remove('active'));
-            opt.classList.add('active');
-            currentMode = opt.dataset.mode;
-        }
+        opt.onclick = () => { if(!isGenerating) { document.querySelectorAll('.mode-option').forEach(o=>o.classList.remove('active')); opt.classList.add('active'); currentMode=opt.dataset.mode; } };
     });
 };
 </script>
